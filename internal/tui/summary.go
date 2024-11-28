@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/bcdxn/f1cli/internal/tui/styles"
+	"github.com/charmbracelet/bubbles/spinner"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 )
@@ -14,12 +15,23 @@ var (
 	s = styles.DefaultStyles()
 )
 
+func RunTUI(l *slog.Logger, done chan int) error {
+	m := newModel(l, done)
+	if _, err := tea.NewProgram(m, tea.WithAltScreen()).Run(); err != nil {
+		return err
+	}
+
+	return nil
+}
+
 // Model represents the current state of the Bubbletea Application. It holds all of the data
 // required to render the TUI.
 type Model struct {
 	// meta data
-	logger             *slog.Logger
-	isLoadingReference bool
+	logger    *slog.Logger
+	isLoading bool
+	// bubbles
+	spinner spinner.Model
 	// window size
 	width  int
 	height int
@@ -37,7 +49,7 @@ type Model struct {
 
 // Init return the initial command for the TUI to run.
 func (m Model) Init() tea.Cmd {
-	return nil
+	return m.spinner.Tick
 }
 
 // Update handles incoming messages and update the model accordingly.
@@ -57,37 +69,29 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return handleLapCountMsg(m, msg)
 	case RaceCtrlMsg:
 		return handleRaceCtrlMsg(m, msg)
+	default:
+		var cmd tea.Cmd
+		if m.isLoading {
+			m.spinner, cmd = m.spinner.Update(msg)
+		}
+		return m, cmd
 	}
-
-	return m, nil
 }
 
 // View renders the TUI view as a string for the terminal.
 func (m Model) View() string {
-	view := lipgloss.JoinVertical(
-		lipgloss.Center,
-		viewHeader(m),
-	)
+	v := ""
 
-	return s.Doc.Width(m.width).Render(view)
-}
-
-func New(logger *slog.Logger, done chan int) Model {
-	drivers := make(map[int]driver)
-	loading := "loading..."
-	return Model{
-		logger:             logger,
-		isLoadingReference: true,
-		drivers:            drivers,
-		done:               done,
-		eventInfo: eventInfo{
-			MeetingName:   loading,
-			SessionName:   loading,
-			SessionType:   sessionTypeUnknown,
-			SessionStatus: sessionStatusUnknown,
-			TrackStatus:   trackStatusUnknown,
-		},
+	if m.isLoading {
+		v = m.spinner.View() + " loading..."
+	} else {
+		v = lipgloss.JoinVertical(
+			lipgloss.Center,
+			viewHeader(m),
+		)
 	}
+
+	return s.Doc.Width(m.width).Render(v)
 }
 
 /* Tea Messages
@@ -274,6 +278,29 @@ func handleRaceCtrlMsg(m Model, msg RaceCtrlMsg) (Model, tea.Cmd) {
 
 /* Private State Helper Functions
 ------------------------------------------------------------------------------------------------- */
+
+// newModel creates a new instance of the underlying TUI model.
+func newModel(logger *slog.Logger, done chan int) Model {
+	drivers := make(map[int]driver)
+	loading := "loading..."
+	s := spinner.New()
+	s.Spinner = spinner.MiniDot
+
+	return Model{
+		logger:    logger,
+		isLoading: true,
+		spinner:   s,
+		drivers:   drivers,
+		done:      done,
+		eventInfo: eventInfo{
+			MeetingName:   loading,
+			SessionName:   loading,
+			SessionType:   sessionTypeUnknown,
+			SessionStatus: sessionStatusUnknown,
+			TrackStatus:   trackStatusUnknown,
+		},
+	}
+}
 
 // mergeDriverInfo is a helper function to 'intelligently' merge data from a driver info message
 // into existing driver info stored within the model.

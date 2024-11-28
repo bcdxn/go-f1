@@ -1,9 +1,11 @@
 package summary
 
 import (
+	"bytes"
 	"io"
 	"log/slog"
 	"testing"
+	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/x/exp/teatest"
@@ -19,7 +21,7 @@ func TestAppExitOnCtrlC(t *testing.T) {
 	done := make(chan int)
 	tm := teatest.NewTestModel(
 		t,
-		New(testLogger(t), done),
+		newModel(testLogger(t), done),
 		teatest.WithInitialTermSize(100, 150),
 	)
 
@@ -28,15 +30,15 @@ func TestAppExitOnCtrlC(t *testing.T) {
 	if code != 0 {
 		t.Fatal("should not have exited with error but found exit code", code)
 	}
-	if !m.isLoadingReference {
-		t.Fatal("m.isLoadingReference should be true")
+	if !m.isLoading {
+		t.Fatal("m.isLoading should be true")
 	}
 }
 
 // TestHandleEventInfoMsg validates that the EventInfoMsg is handled correctly
 func TestHandleEventInfoMsg(t *testing.T) {
 	done := make(chan int)
-	m := New(testLogger(t), done)
+	m := newModel(testLogger(t), done)
 	tm := teatest.NewTestModel(
 		t,
 		m,
@@ -63,7 +65,7 @@ func TestHandleEventInfoMsg(t *testing.T) {
 
 func TestHandleDriverInfoMsg(t *testing.T) {
 	done := make(chan int)
-	m := New(testLogger(t), done)
+	m := newModel(testLogger(t), done)
 	tm := teatest.NewTestModel(
 		t,
 		m,
@@ -101,7 +103,7 @@ func TestHandleDriverInfoMsg(t *testing.T) {
 
 func TestHandleDriverInfoMsgDelta(t *testing.T) {
 	done := make(chan int)
-	m := New(testLogger(t), done)
+	m := newModel(testLogger(t), done)
 	tm := teatest.NewTestModel(
 		t,
 		m,
@@ -166,7 +168,7 @@ func TestHandleDriverInfoMsgDelta(t *testing.T) {
 
 func TestHandleDriverInfoMsgFastestLap(t *testing.T) {
 	done := make(chan int)
-	m := New(testLogger(t), done)
+	m := newModel(testLogger(t), done)
 	tm := teatest.NewTestModel(
 		t,
 		m,
@@ -199,7 +201,7 @@ func TestHandleDriverInfoMsgFastestLap(t *testing.T) {
 
 func TestHandleDriverInfoMsgFastestLapUpdate(t *testing.T) {
 	done := make(chan int)
-	m := New(testLogger(t), done)
+	m := newModel(testLogger(t), done)
 	tm := teatest.NewTestModel(
 		t,
 		m,
@@ -249,7 +251,7 @@ func TestHandleDriverInfoMsgFastestLapUpdate(t *testing.T) {
 
 func TestHandleLapCountMsg(t *testing.T) {
 	done := make(chan int)
-	m := New(testLogger(t), done)
+	m := newModel(testLogger(t), done)
 	tm := teatest.NewTestModel(
 		t,
 		m,
@@ -285,7 +287,7 @@ func TestHandleLapCountMsg(t *testing.T) {
 
 func TestHandleRaceCtrlMsg(t *testing.T) {
 	done := make(chan int)
-	m := New(testLogger(t), done)
+	m := newModel(testLogger(t), done)
 	tm := teatest.NewTestModel(
 		t,
 		m,
@@ -310,7 +312,7 @@ func TestHandleRaceCtrlMsg(t *testing.T) {
 
 func TestWindowInitialSize(t *testing.T) {
 	done := make(chan int)
-	m := New(testLogger(t), done)
+	m := newModel(testLogger(t), done)
 	tm := teatest.NewTestModel(
 		t,
 		m,
@@ -328,18 +330,18 @@ func TestWindowInitialSize(t *testing.T) {
 
 func TestInitialView(t *testing.T) {
 	done := make(chan int)
-	m := New(testLogger(t), done)
+	m := newModel(testLogger(t), done)
 	tm := teatest.NewTestModel(
 		t,
 		m,
 		teatest.WithInitialTermSize(100, 150),
 	)
+
+	teatest.WaitFor(t, tm.Output(), func(bts []byte) bool {
+		return bytes.Contains(bts, []byte(" loading..."))
+	}, teatest.WithCheckInterval(time.Millisecond*100), teatest.WithDuration(time.Second*1))
+
 	exitTeaProgram(t, tm, done)
-	out, err := io.ReadAll(tm.FinalOutput(t))
-	if err != nil {
-		t.Error(err)
-	}
-	teatest.RequireEqualOutput(t, out)
 }
 
 /* Test Helper Functions
