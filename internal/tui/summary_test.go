@@ -25,7 +25,7 @@ func TestAppExitOnCtrlC(t *testing.T) {
 		teatest.WithInitialTermSize(100, 150),
 	)
 
-	code, m := exitTeaProgram(t, tm, done)
+	code, m := exitTestTeaProgram(t, tm, done)
 
 	if code != 0 {
 		t.Fatal("should not have exited with error but found exit code", code)
@@ -53,7 +53,7 @@ func TestHandleEventInfoMsg(t *testing.T) {
 	// send the message to the TUI app
 	tm.Send(msg)
 	// stop the program so we can look at the final model state
-	_, fm := exitTeaProgram(t, tm, done)
+	_, fm := exitTestTeaProgram(t, tm, done)
 	// check that the message was handled properly
 	if fm.eventInfo.MeetingName != msg.MeetingName {
 		t.Fatalf("expected %s but found %s", msg.MeetingName, fm.eventInfo.MeetingName)
@@ -88,7 +88,7 @@ func TestHandleDriverInfoMsg(t *testing.T) {
 	// send the message to the TUI app
 	tm.Send(msg)
 	// stop the program so we can look at the final model state
-	_, fm := exitTeaProgram(t, tm, done)
+	_, fm := exitTestTeaProgram(t, tm, done)
 	// check that the message was handled properly
 	if fm.drivers[44].Name != msg.Name {
 		t.Fatalf("expected %s but found %s", msg.Name, fm.drivers[44].Name)
@@ -147,7 +147,7 @@ func TestHandleDriverInfoMsgDelta(t *testing.T) {
 	// send the delta message to the TUI app
 	tm.Send(msg2)
 	// stop the program so we can look at the final model state
-	_, fm := exitTeaProgram(t, tm, done)
+	_, fm := exitTestTeaProgram(t, tm, done)
 	if fm.drivers[44].Position != msg.Position {
 		// Ensure that a zero value doesn't overwrite existing value
 		t.Fatalf("expected %d but found %d", msg.Position, fm.drivers[44].Position)
@@ -190,7 +190,7 @@ func TestHandleDriverInfoMsgFastestLap(t *testing.T) {
 	// send the message to the TUI app
 	tm.Send(msg)
 	// stop the program so we can look at the final model state
-	_, fm := exitTeaProgram(t, tm, done)
+	_, fm := exitTestTeaProgram(t, tm, done)
 	if fm.fastestLapTime != msg.BestLapTime {
 		t.Fatalf("expected %s but found %s", msg.BestLapTime, fm.fastestLapTime)
 	}
@@ -239,7 +239,7 @@ func TestHandleDriverInfoMsgFastestLapUpdate(t *testing.T) {
 	// send the delta message to the TUI app
 	tm.Send(msg)
 	// stop the program so we can look at the final model state
-	_, fm := exitTeaProgram(t, tm, done)
+	_, fm := exitTestTeaProgram(t, tm, done)
 	// make assertions
 	if fm.fastestLapTime != msg.LastLapTime {
 		t.Fatalf("expected %s but found %s", msg.LastLapTime, fm.fastestLapTime)
@@ -275,7 +275,7 @@ func TestHandleLapCountMsg(t *testing.T) {
 	tm.Send(msg2)
 	tm.Send(msg3)
 	// stop the program so we can look at the final model state
-	_, fm := exitTeaProgram(t, tm, done)
+	_, fm := exitTestTeaProgram(t, tm, done)
 	// make assertions
 	if fm.totalPlannedLaps != msg.Total {
 		t.Fatalf("expected %d but found %d", msg.Total, fm.totalPlannedLaps)
@@ -300,7 +300,7 @@ func TestHandleRaceCtrlMsg(t *testing.T) {
 	// send the message to the TUI app
 	tm.Send(msg)
 	// stop the program so we can look at the final model state
-	_, fm := exitTeaProgram(t, tm, done)
+	_, fm := exitTestTeaProgram(t, tm, done)
 	// make assertions
 	if fm.raceCtrlMsg.Title != msg.Category {
 		t.Fatalf("expected %s but found %s", msg.Category, fm.raceCtrlMsg.Title)
@@ -319,7 +319,7 @@ func TestWindowInitialSize(t *testing.T) {
 		teatest.WithInitialTermSize(100, 150),
 	)
 	// stop the program so we can look at the final model state
-	_, fm := exitTeaProgram(t, tm, done)
+	_, fm := exitTestTeaProgram(t, tm, done)
 	if fm.width != 98 {
 		t.Fatalf("expected %d but found %d", 98, fm.width)
 	}
@@ -341,7 +341,7 @@ func TestInitialView(t *testing.T) {
 		return bytes.Contains(bts, []byte(" loading..."))
 	}, teatest.WithCheckInterval(time.Millisecond*100), teatest.WithDuration(time.Second*1))
 
-	exitTeaProgram(t, tm, done)
+	exitTestTeaProgram(t, tm, done)
 }
 
 /* Test Helper Functions
@@ -354,9 +354,9 @@ func testLogger(t *testing.T) *slog.Logger {
 	return slog.New(slog.NewTextHandler(io.Discard, nil))
 }
 
-// exitTeaProgram is a test helper function that sends a keypress event to quit the bubbletea test
+// exitTestTeaProgram is a test helper function that sends a keypress event to quit the bubbletea test
 // program, waits for it exit, and then returns the exit code along with the final model state
-func exitTeaProgram(t *testing.T, tm *teatest.TestModel, done chan int) (int, Model) {
+func exitTestTeaProgram(t *testing.T, tm *teatest.TestModel, done chan int) (int, Model) {
 	var code int
 	t.Helper()
 	tm.Send(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'q'}})
