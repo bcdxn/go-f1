@@ -1,6 +1,7 @@
 package f1livetiming
 
 import (
+	"context"
 	"fmt"
 	"io"
 	"log/slog"
@@ -9,6 +10,8 @@ import (
 	"regexp"
 	"strings"
 	"testing"
+
+	"github.com/coder/websocket"
 )
 
 // TestNewClient ensures that the default configuration is pointing to the F1 Live Timing API and
@@ -63,6 +66,48 @@ func TestConnectWithoutNegotiate(t *testing.T) {
 	}
 }
 
+func TestConnectionSubscribe(t *testing.T) {
+	i := make(chan struct{})
+	ts := newWSTestServer(t, func() http.HandlerFunc {
+		return func(w http.ResponseWriter, r *http.Request) {
+			conn, err := websocket.Accept(w, r, nil)
+			if err != nil {
+				t.Errorf("error setting up websocket in test")
+			}
+
+			_, msgBytes, err := conn.Read(context.Background())
+			if err != nil {
+				t.Errorf("error in test websocket server reading subscribe message - %s", err.Error())
+			}
+
+			msg := string(msgBytes)
+			if !strings.Contains(msg, `"M": "Subscribe"`) {
+				t.Errorf("expected subscribe message but found - %s", msg)
+			}
+			close(i)
+		}
+	}())
+	defer ts.Close()
+
+	c := NewClient(
+		WithHTTPBaseURL(ts.URL),
+		WithWSBaseURL(httpToWS(t, ts.URL)),
+		WithLogger(testLogger(t)),
+		WithInterruptChan(i),
+	)
+
+	err := c.Negotiate()
+	if err != nil {
+		t.Errorf("unexpected error negotiating connection")
+	}
+	err = c.Connect()
+	if err != nil {
+		t.Errorf("unexpected error negotiating connection")
+	}
+	<-c.Done
+	fmt.Println("and we're done?")
+}
+
 /* Private Helper Functions
 ------------------------------------------------------------------------------------------------- */
 
@@ -85,7 +130,7 @@ func httpToWS(t *testing.T, u string) string {
 
 // newWSTestServer creates a mock server for testing that supports the negotiate and connect
 // endpoints exposed by the F1 Live Timing API
-func newWSTestServer(t *testing.T) *httptest.Server {
+func newWSTestServer(t *testing.T, wsHandlers ...http.HandlerFunc) *httptest.Server {
 	t.Helper()
 
 	mux := http.NewServeMux()
@@ -108,13 +153,7 @@ func newWSTestServer(t *testing.T) *httptest.Server {
     `)
 	})
 
-	// mux.HandleFunc("/signalr/connect", func(w http.ResponseWriter, r *http.Request) {
-	// 	conn, err := websocket.Accept(w, r, nil)
-	// 	if err != nil {
-	// 		t.Errorf("error setting up websocket in test")
-	// 	}
-
-	// })
+	mux.HandleFunc("/signalr/connect", wsHandlers[0])
 	s := httptest.NewServer(mux)
 
 	return s

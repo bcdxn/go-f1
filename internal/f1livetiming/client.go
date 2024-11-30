@@ -34,8 +34,9 @@ func NewClient(opts ...ClientOption) *Client {
 // transforms them into a simpler structure that aligns with structures more appropriate for the TUI
 type Client struct {
 	// channels
-	Interrupt chan struct{}
-	DriverCh  chan domain.Driver
+	Interrupt chan struct{}      // a channel for the outside world to signal to stop listening
+	Done      chan error         // a channel to communicate to the outside world that we've closed the websocket
+	DriverCh  chan domain.Driver // a channel for sending driver domain 'events' to the outside world
 	// logger
 	logger *slog.Logger
 	// Session data
@@ -87,21 +88,28 @@ func (c *Client) Negotiate() error {
 // an in-progress F1 event.
 func (c *Client) Connect() error {
 	if c.connectionToken == "" {
+		close(c.Done)
 		return errors.New("client.Negotiate() was not called or a valid connecton token was not returned")
 	}
 
 	u, err := c.websocketURL()
 	if err != nil {
+		close(c.Done)
 		return err
 	}
 
 	conn, _, err := websocket.Dial(context.Background(), u.String(), nil)
 	if err != nil {
+		close(c.Done)
 		return err
 	}
 	defer conn.CloseNow()
 	// Start the subscription by sending a message indicating which messages we're interested in
-	c.sendSubscribeMsg(conn)
+	err = c.sendSubscribeMsg(conn)
+	if err != nil {
+		close(c.Done)
+		return err
+	}
 
 	listening := true
 
@@ -117,6 +125,10 @@ func (c *Client) Connect() error {
 		}
 	}()
 
+	<-c.Interrupt // wait on interrupt signal
+	listening = false
+	conn.Close(websocket.StatusNormalClosure, "")
+	close(c.Done) // notify the outside world that we've closed the websocket
 	return nil
 }
 
@@ -140,6 +152,12 @@ func WithWSBaseURL(baseUrl string) ClientOption {
 func WithLogger(l *slog.Logger) ClientOption {
 	return func(c *Client) {
 		c.logger = l
+	}
+}
+
+func WithInterruptChan(interrupt chan struct{}) ClientOption {
+	return func(c *Client) {
+		c.Interrupt = interrupt
 	}
 }
 
@@ -180,6 +198,7 @@ func defaultClient() *Client {
 	return &Client{
 		logger:      slog.Default(),
 		Interrupt:   make(chan struct{}),
+		Done:        make(chan error),
 		httpBaseURL: "https://livetiming.formula1.com",
 		wsBaseURL:   "wss://livetiming.formula1.com",
 	}
