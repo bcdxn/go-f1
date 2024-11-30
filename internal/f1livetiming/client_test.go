@@ -7,9 +7,12 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"regexp"
+	"strings"
 	"testing"
 )
 
+// TestNewClient ensures that the default configuration is pointing to the F1 Live Timing API and
+// that the optional function parameters to set endpoints works correctly.
 func TestNewClient(t *testing.T) {
 	c := NewClient(WithLogger(testLogger(t)))
 
@@ -33,6 +36,8 @@ func TestNewClient(t *testing.T) {
 	}
 }
 
+// TestNegotiate ensures that the connection token is correctly parsed from the F1 Live Timing
+// `/negotiate` endpoint.
 func TestNegotiate(t *testing.T) {
 	ts := newWSTestServer(t)
 	defer ts.Close()
@@ -46,15 +51,29 @@ func TestNegotiate(t *testing.T) {
 	}
 }
 
+// TestConnectWithoutNegotiate ensures that the client forces a Negotiate() function call before
+// calling the Connect() function.
+func TestConnectWithoutNegotiate(t *testing.T) {
+	c := NewClient(WithLogger(testLogger(t)))
+
+	err := c.Connect()
+
+	if err == nil || !strings.Contains(err.Error(), "client.Negotiate()") {
+		t.Errorf("Client.Connect() should require a successful Client.Negotiate")
+	}
+}
+
 /* Private Helper Functions
 ------------------------------------------------------------------------------------------------- */
 
+// testLogger creates a new logger to be used in tests that writes all logs to /dev/null so they
+// don't uglify the test output.
 func testLogger(t *testing.T) *slog.Logger {
 	t.Helper()
 	return slog.New(slog.NewTextHandler(io.Discard, nil))
 }
 
-// httpToWS
+// httpToWS is a helper function that takes an http(s) endpoint and converts it to a ws(s) endpoint.
 func httpToWS(t *testing.T, u string) string {
 	t.Helper()
 	httpsRe := regexp.MustCompile("https://")
@@ -74,19 +93,19 @@ func newWSTestServer(t *testing.T) *httptest.Server {
 	mux.HandleFunc("/signalr/negotiate", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Cookie", "test-cookie")
 		fmt.Fprintln(w, `
-		{
-			"Url": "/signalr",
-			"ConnectionToken": "connection-token",
-			"ConnectionId": "connection-id",
-			"KeepAliveTimeout": 20.0,
-			"DisconnectTimeout": 30.0,
-			"ConnectionTimeout": 110.0,
-			"TryWebSockets": true,
-			"ProtocolVersion": "1.5",
-			"TransportConnectTimeout": 10.0,
-			"LongPollDelay": 1.0
-		}
-		`)
+    {
+      "Url": "/signalr",
+      "ConnectionToken": "connection-token",
+      "ConnectionId": "connection-id",
+      "KeepAliveTimeout": 20.0,
+      "DisconnectTimeout": 30.0,
+      "ConnectionTimeout": 110.0,
+      "TryWebSockets": true,
+      "ProtocolVersion": "1.5",
+      "TransportConnectTimeout": 10.0,
+      "LongPollDelay": 1.0
+    }
+    `)
 	})
 
 	// mux.HandleFunc("/signalr/connect", func(w http.ResponseWriter, r *http.Request) {

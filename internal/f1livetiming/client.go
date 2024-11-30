@@ -10,7 +10,9 @@ import (
 	"net/http"
 	"net/url"
 	"regexp"
+	"strconv"
 
+	"github.com/bcdxn/f1cli/internal/domain"
 	"github.com/coder/websocket"
 	"github.com/coder/websocket/wsjson"
 )
@@ -33,7 +35,7 @@ func NewClient(opts ...ClientOption) *Client {
 type Client struct {
 	// channels
 	Interrupt chan struct{}
-	DriverCh  chan DriverMsg
+	DriverCh  chan domain.Driver
 	// logger
 	logger *slog.Logger
 	// Session data
@@ -84,6 +86,10 @@ func (c *Client) Negotiate() error {
 // from the Negotiate call. This websocket is where the client can listen for real-time data about
 // an in-progress F1 event.
 func (c *Client) Connect() error {
+	if c.connectionToken == "" {
+		return errors.New("client.Negotiate() was not called or a valid connecton token was not returned")
+	}
+
 	u, err := c.websocketURL()
 	if err != nil {
 		return err
@@ -163,23 +169,6 @@ type f1ChangeMessage struct {
 		Message   string `json:"M"`
 		Arguments []any  `json:"A"`
 	} `json:"M"`
-}
-
-// Driver intrinsic and timing data to be emitted on the driver channel.
-type DriverMsg struct {
-	Number      int
-	ShortName   string
-	Name        string
-	Position    int
-	IntervalGap string
-	LeaderGap   string
-	Tire        struct {
-		Compound string
-		LapCount int
-	}
-	LastLapTime string
-	BestLapTime string
-	InPit       *bool
 }
 
 /* Private Helper Functions
@@ -269,24 +258,24 @@ func (c Client) websocketURL() (*url.URL, error) {
 // to receive as required by the F1 Live Timing API.
 func (Client) sendSubscribeMsg(conn *websocket.Conn) error {
 	return wsjson.Write(context.Background(), conn, `
-		{
-			"H": "Streaming",
-			"M": "Subscribe",
-			"A": [[
-				"Heartbeat",
-				"TimingStats",
-				"TimingAppData",
-				"TrackStatus",
-				"DriverList",
-				"RaceControlMessages",
-				"SessionInfo",
-				"SessionData",
-				"LapCount",
-				"TimingData"
-			]],
-			"I": 1
-		}
-	`)
+        {
+            "H": "Streaming",
+            "M": "Subscribe",
+            "A": [[
+                "Heartbeat",
+                "TimingStats",
+                "TimingAppData",
+                "TrackStatus",
+                "DriverList",
+                "RaceControlMessages",
+                "SessionInfo",
+                "SessionData",
+                "LapCount",
+                "TimingData"
+            ]],
+            "I": 1
+        }
+    `)
 }
 
 var (
@@ -330,10 +319,48 @@ func (c *Client) processChangeMessage(changeMessage f1ChangeMessage) {
 			msgType := m.Arguments[0]
 			msgData := m.Arguments[1]
 			switch msgType {
-			// TODO: process change message
+			case "DriverList":
+				c.writeDriverListToDriverChannel(msgData)
 			default:
 				c.logger.Warn("unknown change message", "type", msgType, "msg", msgData)
 			}
+		}
+	}
+}
+
+/* Channel Senders
+------------------------------------------------------------------------------------------------- */
+
+// writeDriverListToDriverChannel converts DriverList data from the F1 Live Timing API to the Driver
+// domain model and emits it on the Driver channel
+func (c *Client) writeDriverListToDriverChannel(msg any) {
+	str, err := json.Marshal(msg)
+	if err != nil {
+		c.logger.Warn("unable to serialize msg", "msg", msg)
+		return
+	}
+
+	var driverDataMsg map[string]driverData
+	err = json.Unmarshal(str, &driverDataMsg)
+	if err != nil {
+		c.logger.Warn("driver data msg in unknown format", "msg", str)
+		return
+	}
+
+	// emit driver data for each driver
+	for driverNumber, driverData := range driverDataMsg {
+		number, err := strconv.Atoi(driverNumber)
+		if err != nil {
+			c.logger.Warn("invalid driver number as driver info key", "driverNumber", driverNumber)
+			continue
+		}
+		c.DriverCh <- domain.Driver{
+			Number:    number,
+			ShortName: driverData.ShortName,
+			Name:      driverData.FullName,
+			Position:  driverData.Line,
+			TeamName:  driverData.TeamName,
+			TeamColor: driverData.TeamColour,
 		}
 	}
 }
