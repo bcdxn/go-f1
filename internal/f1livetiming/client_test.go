@@ -81,7 +81,7 @@ func TestConnectionSubscribe(t *testing.T) {
 			}
 
 			msg := string(msgBytes)
-			if !strings.Contains(msg, `"M": "Subscribe"`) {
+			if !strings.Contains(msg, `\"M\": \"Subscribe\"`) {
 				t.Errorf("expected subscribe message but found - %s", msg)
 			}
 			close(i)
