@@ -103,7 +103,7 @@ func (c *Client) Connect() error {
 		close(c.Done)
 		return err
 	}
-	defer conn.CloseNow()
+	// defer conn.CloseNow()
 	// Start the subscription by sending a message indicating which messages we're interested in
 	err = c.sendSubscribeMsg(conn)
 	if err != nil {
@@ -199,6 +199,7 @@ func defaultClient() *Client {
 		logger:      slog.Default(),
 		Interrupt:   make(chan struct{}),
 		Done:        make(chan error),
+		DriverCh:    make(chan domain.Driver),
 		httpBaseURL: "https://livetiming.formula1.com",
 		wsBaseURL:   "wss://livetiming.formula1.com",
 	}
@@ -366,7 +367,7 @@ func (c *Client) writeDriverListToDriverChannel(msg any) {
 		return
 	}
 
-	// emit driver data for each driver
+	// write data for each driver to the driver channel
 	for driverNumber, driverData := range driverDataMsg {
 		number, err := strconv.Atoi(driverNumber)
 		if err != nil {

@@ -2,12 +2,18 @@ package f1livetiming
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"io"
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
+	"os"
+	"path"
+	"path/filepath"
 	"regexp"
+	"runtime"
+	"strconv"
 	"strings"
 	"testing"
 
@@ -42,7 +48,7 @@ func TestNewClient(t *testing.T) {
 // TestNegotiate ensures that the connection token is correctly parsed from the F1 Live Timing
 // `/negotiate` endpoint.
 func TestNegotiate(t *testing.T) {
-	ts := newWSTestServer(t)
+	ts := newWSTestServer(t, defaultWSHandler(t))
 	defer ts.Close()
 
 	c := NewClient(WithHTTPBaseURL(ts.URL), WithLogger(testLogger(t)))
@@ -66,6 +72,8 @@ func TestConnectWithoutNegotiate(t *testing.T) {
 	}
 }
 
+// TestConnectionSubscribe tests that the client sends the proper 'subscribe' message to the server
+// to kickoff the live-timing websocket communication.
 func TestConnectionSubscribe(t *testing.T) {
 	i := make(chan struct{})
 	ts := newWSTestServer(t, func() http.HandlerFunc {
@@ -75,16 +83,23 @@ func TestConnectionSubscribe(t *testing.T) {
 				t.Errorf("error setting up websocket in test")
 			}
 
-			_, msgBytes, err := conn.Read(context.Background())
-			if err != nil {
-				t.Errorf("error in test websocket server reading subscribe message - %s", err.Error())
+			running := true
+			for running {
+				_, msgBytes, err := conn.Read(context.Background())
+				if err != nil && websocket.CloseStatus(err) != -1 {
+					// received a close connection msg from the client; complete the close handhake
+					conn.Close(websocket.StatusNormalClosure, "closing")
+					running = false
+				} else if err != nil {
+					t.Errorf("error in test websocket server reading subscribe message - %s", err.Error())
+				} else {
+					msg := string(msgBytes)
+					if !strings.Contains(msg, `\"M\": \"Subscribe\"`) {
+						t.Errorf("expected subscribe message but found - %s", msg)
+					}
+					close(i)
+				}
 			}
-
-			msg := string(msgBytes)
-			if !strings.Contains(msg, `\"M\": \"Subscribe\"`) {
-				t.Errorf("expected subscribe message but found - %s", msg)
-			}
-			close(i)
 		}
 	}())
 	defer ts.Close()
@@ -105,7 +120,40 @@ func TestConnectionSubscribe(t *testing.T) {
 		t.Errorf("unexpected error negotiating connection")
 	}
 	<-c.Done
-	fmt.Println("and we're done?")
+}
+
+// TestDriverListMsg tests that the client handles the DriverList message correct and writes its own
+// domain-oriented data to the driver channel.
+func TestDriverListMsg(t *testing.T) {
+	ts := newWSTestServer(t, defaultWSHandler(t, "DriverList"))
+	c := NewClient(
+		WithHTTPBaseURL(ts.URL),
+		WithWSBaseURL(httpToWS(t, ts.URL)),
+		WithLogger(testLogger(t)),
+	)
+
+	driverList := driverList(t)
+	c.Negotiate()
+	go c.Connect()
+	max := len(driverList)
+	count := 0
+	for {
+		d := <-c.DriverCh
+		count++
+		if d.Name != driverList[strconv.Itoa(d.Number)].FullName {
+			t.Errorf("expected name %s but found %s", driverList["4"].FullName, d.Name)
+		}
+		number, err := strconv.Atoi(driverList[strconv.Itoa(d.Number)].RacingNumber)
+		if err != nil {
+			t.Errorf("unexpected racing number format in testdata - %s", driverList[strconv.Itoa(d.Number)].RacingNumber)
+		}
+		if d.Number != number {
+			t.Errorf("expected name %d but found %d", number, d.Number)
+		}
+		if count >= max {
+			break
+		}
+	}
 }
 
 /* Private Helper Functions
@@ -130,7 +178,7 @@ func httpToWS(t *testing.T, u string) string {
 
 // newWSTestServer creates a mock server for testing that supports the negotiate and connect
 // endpoints exposed by the F1 Live Timing API
-func newWSTestServer(t *testing.T, wsHandlers ...http.HandlerFunc) *httptest.Server {
+func newWSTestServer(t *testing.T, wsHandler http.HandlerFunc) *httptest.Server {
 	t.Helper()
 
 	mux := http.NewServeMux()
@@ -153,8 +201,92 @@ func newWSTestServer(t *testing.T, wsHandlers ...http.HandlerFunc) *httptest.Ser
     `)
 	})
 
-	mux.HandleFunc("/signalr/connect", wsHandlers[0])
+	mux.HandleFunc("/signalr/connect", wsHandler)
 	s := httptest.NewServer(mux)
 
 	return s
+}
+
+// defaultWSeHandler returns a default handler for the test websocket server. Given a list of
+// message types, it will read the test messages of that type and write them to the websocket afte
+// it receives the 'subscribe' from the client.
+func defaultWSHandler(t *testing.T, messageTypes ...string) http.HandlerFunc {
+	dir := testdataDir()
+	files, err := os.ReadDir(dir)
+	if err != nil {
+		t.Errorf("error finding files in 'testdata'")
+	}
+
+	msgs := make([][]byte, 0)
+	for _, messageType := range messageTypes {
+		// filter the messages that match the given messageType
+		msgRe := regexp.MustCompile("msg-" + strings.ToLower(messageType) + `(-[\d]+)?.json`)
+		for _, file := range files {
+			if msgRe.MatchString(file.Name()) {
+				f := path.Join(dir, file.Name())
+				msg, err := os.ReadFile(f)
+				if err != nil {
+					t.Errorf("error reading file %s", f)
+				}
+				msgs = append(msgs, msg)
+			}
+		}
+
+	}
+
+	return func(w http.ResponseWriter, r *http.Request) {
+		conn, err := websocket.Accept(w, r, nil)
+		if err != nil {
+			t.Errorf("error setting up websocket in test")
+		}
+
+		_, _, err = conn.Read(context.Background())
+		if err != nil {
+			t.Errorf("error in test websocket server reading subscribe message - %s", err.Error())
+		}
+
+		// once we have the subscribe message, we can write all of the messages to to the socket
+		for _, msg := range msgs {
+			err = conn.Write(context.Background(), websocket.MessageText, msg)
+			if err != nil {
+				t.Error("error writing test message to websocket", err)
+			}
+		}
+	}
+}
+
+// getTestdataDir gets the testdata directory path relative to the invocation of the tests.
+func testdataDir() string {
+	_, p, _, _ := runtime.Caller(0)
+	return path.Join(filepath.Dir(p), "testdata")
+}
+
+// driverList parses the driverlist test data file for matching in tests
+func driverList(t *testing.T) map[string]driverData {
+	td := testdataDir()
+	contents, err := os.ReadFile(path.Join(td, "msg-driverlist-0.json"))
+	if err != nil {
+		t.Errorf("error reading test msg file")
+	}
+	var changeMessage struct {
+		M []struct {
+			A []any
+		}
+	}
+	err = json.Unmarshal(contents, &changeMessage)
+	if err != nil {
+		t.Errorf("test data is in invalid format; expected change data message but found - %s", string(contents))
+	}
+
+	s, err := json.Marshal(changeMessage.M[0].A[1])
+	if err != nil {
+		t.Errorf("test data is in invalid format; unable to marshal message %s", string(contents))
+	}
+	var d map[string]driverData
+	err = json.Unmarshal(s, &d)
+	if err != nil {
+		t.Errorf("test data is in invalid format; expected map of driver data but found %s", string(s))
+	}
+
+	return d
 }
