@@ -64,9 +64,10 @@ func TestNegotiate(t *testing.T) {
 // calling the Connect() function.
 func TestConnectWithoutNegotiate(t *testing.T) {
 	c := NewClient(WithLogger(testLogger(t)))
-
-	err := c.Connect()
-
+	// Connect to the test websocket server
+	go c.Connect()
+	// Wait for the client to close the connection
+	err := <-c.DoneCh()
 	if err == nil || !strings.Contains(err.Error(), "client.Negotiate()") {
 		t.Errorf("Client.Connect() should require a successful Client.Negotiate")
 	}
@@ -75,7 +76,6 @@ func TestConnectWithoutNegotiate(t *testing.T) {
 // TestConnectionSubscribe tests that the client sends the proper 'subscribe' message to the server
 // to kickoff the live-timing websocket communication.
 func TestConnectionSubscribe(t *testing.T) {
-	i := make(chan struct{})
 	ts := newWSTestServer(t, func() http.HandlerFunc {
 		return func(w http.ResponseWriter, r *http.Request) {
 			conn, err := websocket.Accept(w, r, nil)
@@ -87,17 +87,19 @@ func TestConnectionSubscribe(t *testing.T) {
 			for running {
 				_, msgBytes, err := conn.Read(context.Background())
 				if err != nil && websocket.CloseStatus(err) != -1 {
-					// received a close connection msg from the client; complete the close handhake
-					conn.Close(websocket.StatusNormalClosure, "closing")
+					// received a close connection msg from the client completing the close handhake
 					running = false
 				} else if err != nil {
+					running = false
 					t.Errorf("error in test websocket server reading subscribe message - %s", err.Error())
 				} else {
 					msg := string(msgBytes)
 					if !strings.Contains(msg, `\"M\": \"Subscribe\"`) {
 						t.Errorf("expected subscribe message but found - %s", msg)
 					}
-					close(i)
+					// send back a close message to start the close handshake
+					conn.Close(websocket.StatusNormalClosure, "server closed connection")
+					running = false
 				}
 			}
 		}
@@ -108,18 +110,18 @@ func TestConnectionSubscribe(t *testing.T) {
 		WithHTTPBaseURL(ts.URL),
 		WithWSBaseURL(httpToWS(t, ts.URL)),
 		WithLogger(testLogger(t)),
-		WithInterruptChan(i),
 	)
 
 	err := c.Negotiate()
 	if err != nil {
 		t.Errorf("unexpected error negotiating connection")
 	}
-	err = c.Connect()
+
+	go c.Connect()
+	err = <-c.DoneCh()
 	if err != nil {
 		t.Errorf("unexpected error negotiating connection")
 	}
-	<-c.Done
 }
 
 // TestDriverListMsg tests that the client handles the DriverList message correct and writes its own
@@ -138,7 +140,7 @@ func TestDriverListMsg(t *testing.T) {
 	max := len(driverList)
 	count := 0
 	for {
-		d := <-c.DriverCh
+		d := <-c.DriverCh()
 		count++
 		if d.Name != driverList[strconv.Itoa(d.Number)].FullName {
 			t.Errorf("expected name %s but found %s", driverList["4"].FullName, d.Name)

@@ -33,10 +33,12 @@ func NewClient(opts ...ClientOption) *Client {
 // Client represents an F1 Live Timing API Client that can connect to the F1 Live Timing API and
 // transforms them into a simpler structure that aligns with structures more appropriate for the TUI
 type Client struct {
-	// channels
-	Interrupt chan struct{}      // a channel for the outside world to signal to stop listening
-	Done      chan error         // a channel to communicate to the outside world that we've closed the websocket
-	DriverCh  chan domain.Driver // a channel for sending driver domain 'events' to the outside world
+	// channels for consumers to read from
+	done     chan error         // a channel to communicate to the outside world that we've closed the websocket
+	driverCh chan domain.Driver // a channel for sending driver domain 'events' to the outside world
+	// internal state to manage async nature of the client
+	interrupt chan struct{} // a channel for the outside world to signal to stop listening
+	listening bool          // indicates if the websocket connection is alive
 	// logger
 	logger *slog.Logger
 	// Session data
@@ -86,50 +88,86 @@ func (c *Client) Negotiate() error {
 // Connect calls the F1 Live Timing API, creating the websocket connection, using values derived
 // from the Negotiate call. This websocket is where the client can listen for real-time data about
 // an in-progress F1 event.
-func (c *Client) Connect() error {
+func (c *Client) Connect() {
+	// Ensure negotiate was called before connect
 	if c.connectionToken == "" {
-		close(c.Done)
-		return errors.New("client.Negotiate() was not called or a valid connecton token was not returned")
+		c.done <- errors.New("client.Negotiate() was not called or a valid connecton token was not returned")
+		close(c.done)
+		return
 	}
-
+	// Drive the websocket URL
 	u, err := c.websocketURL()
 	if err != nil {
-		close(c.Done)
-		return err
+		c.done <- err
+		close(c.done)
+		return
 	}
-
+	// Create the websocket connection with the F1 livetiming API server
 	conn, _, err := websocket.Dial(context.Background(), u.String(), nil)
 	if err != nil {
-		close(c.Done)
-		return err
+		c.done <- err
+		close(c.done)
+		return
 	}
-	// defer conn.CloseNow()
 	// Start the subscription by sending a message indicating which messages we're interested in
 	err = c.sendSubscribeMsg(conn)
 	if err != nil {
-		close(c.Done)
-		return err
+		c.done <- err
+		close(c.done)
 	}
-
-	listening := true
-
+	// Start listening on the websocket connection in a non-blocking go-routine
+	closed := make(chan struct{})
 	go func() {
-		for listening {
+		defer close(closed)
+		c.listening = true
+		for c.listening {
+			// listen for messages from the livetiming API on the websocket
 			_, msg, err := conn.Read(context.Background())
 			if err != nil {
-				c.logger.Error("error reading websocket", "err", err.Error())
-				listening = false
+				status := websocket.CloseStatus(err)
+				fmt.Printf("%v", status == websocket.StatusNormalClosure)
+				if websocket.CloseStatus(err) == websocket.StatusNormalClosure {
+					c.logger.Debug("server closed the websocket connection")
+				} else {
+					c.logger.Error("error reading websocket", "closeStatus", websocket.CloseStatus(err), "err", err.Error())
+				}
+				return
 			}
-
+			// No errors, process the message from the livetiming API
 			c.processMessage(msg)
 		}
 	}()
+	// Wait until an interrupt is received or the websocket connection is closed by the server
+	select {
+	case <-c.interrupt:
+		// Received interrupt; stop listening on the websocket
+		c.listening = false
+	case <-closed:
+		// connection closed by webserver
+		c.listening = false
+	}
+	// ensure we close the websocket properly (whether this is the first part in the close handshake,
+	// or the second and final leg of the handshake)
+	conn.Close(websocket.StatusNormalClosure, "client shutting down")
+	close(c.done)
+}
 
-	<-c.Interrupt // wait on interrupt signal
-	listening = false
-	conn.Close(websocket.StatusNormalClosure, "")
-	close(c.Done) // notify the outside world that we've closed the websocket
-	return nil
+func (c *Client) Close() {
+	if c.listening {
+		c.listening = false
+		close(c.interrupt)
+	}
+}
+
+/* Channel Getters
+------------------------------------------------------------------------------------------------- */
+
+func (c *Client) DoneCh() <-chan error {
+	return c.done
+}
+
+func (c *Client) DriverCh() <-chan domain.Driver {
+	return c.driverCh
 }
 
 /* Optional Function Parameters
@@ -155,11 +193,11 @@ func WithLogger(l *slog.Logger) ClientOption {
 	}
 }
 
-func WithInterruptChan(interrupt chan struct{}) ClientOption {
-	return func(c *Client) {
-		c.Interrupt = interrupt
-	}
-}
+// func WithInterruptChan(interrupt chan struct{}) ClientOption {
+// 	return func(c *Client) {
+// 		c.Interrupt = interrupt
+// 	}
+// }
 
 /* Private types
 ------------------------------------------------------------------------------------------------- */
@@ -196,10 +234,11 @@ type f1ChangeMessage struct {
 // pointing at the F1 Live Timing API.
 func defaultClient() *Client {
 	return &Client{
+		done:        make(chan error),
+		driverCh:    make(chan domain.Driver),
 		logger:      slog.Default(),
-		Interrupt:   make(chan struct{}),
-		Done:        make(chan error),
-		DriverCh:    make(chan domain.Driver),
+		interrupt:   make(chan struct{}),
+		listening:   false,
 		httpBaseURL: "https://livetiming.formula1.com",
 		wsBaseURL:   "wss://livetiming.formula1.com",
 	}
@@ -374,7 +413,7 @@ func (c *Client) writeDriverListToDriverChannel(msg any) {
 			c.logger.Warn("invalid driver number as driver info key", "driverNumber", driverNumber)
 			continue
 		}
-		c.DriverCh <- domain.Driver{
+		c.driverCh <- domain.Driver{
 			Number:    number,
 			ShortName: driverData.ShortName,
 			Name:      driverData.FullName,
