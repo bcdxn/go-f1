@@ -31,7 +31,7 @@ type heartbeat struct {
 type referenceTimingAppData struct {
 	Lines map[string]struct {
 		RacingNumber string  `json:"RacingNumber"`
-		Line         int     `json:"Line"`
+		Line         uint8   `json:"Line"`
 		GridPos      string  `json:"GridPos"`
 		Stints       []stint `json:"Stints"`
 	} `json:"Lines"`
@@ -42,21 +42,21 @@ type referenceTimingAppData struct {
 type changeTimingAppData struct {
 	Lines map[string]struct {
 		RacingNumber string           `json:"RacingNumber"`
-		Line         int              `json:"Line"`
+		Line         uint8            `json:"Line"`
 		GridPos      string           `json:"GridPos"`
 		Stints       map[string]stint `json:"Stints"`
 	} `json:"Lines"`
 }
 
 type stint struct {
-	LapFlags        int    `json:"LapFlags"`
-	Compound        string `json:"Compound"`
-	New             string `json:"New"`
-	TyresNotChanged string `json:"TyresNotChanged"`
-	TotalLaps       int    `json:"TotalLaps"`
-	StartLaps       int    `json:"StartLaps"`
-	LapTime         string `json:"LapTime"`
-	LapNumber       int    `json:"LapNumber"`
+	LapFlags        *uint8  `json:"LapFlags"`
+	Compound        *string `json:"Compound"`
+	New             *string `json:"New"`
+	TyresNotChanged *string `json:"TyresNotChanged"`
+	TotalLaps       *uint8  `json:"TotalLaps"`
+	StartLaps       *uint8  `json:"StartLaps"`
+	LapTime         *string `json:"LapTime"`
+	LapNumber       *uint8  `json:"LapNumber"`
 }
 
 type trackStatus struct {
@@ -66,18 +66,18 @@ type trackStatus struct {
 
 // driverData represents intrinsic data about an individual driver
 type driverData struct {
-	RacingNumber  string `json:"RacingNumber"`
-	BroadcastName string `json:"BroadcastName"`
-	FullName      string `json:"FullName"`
-	ShortName     string `json:"Tla"`
-	Line          int    `json:"Line"`
-	TeamName      string `json:"TeamName"`
-	TeamColour    string `json:"TeamColour"`
-	FirstName     string `json:"FirstName"`
-	LastName      string `json:"LastName"`
-	Reference     string `json:"Reference"`
-	CountryCode   string `json:"CountryCode"`
-	HeadshotURL   string `json:"HeadshotUrl"`
+	RacingNumber  *string `json:"RacingNumber"`
+	BroadcastName *string `json:"BroadcastName"`
+	FullName      *string `json:"FullName"`
+	ShortName     *string `json:"Tla"`
+	Line          *uint8  `json:"Line"`
+	TeamName      *string `json:"TeamName"`
+	TeamColour    *string `json:"TeamColour"`
+	FirstName     *string `json:"FirstName"`
+	LastName      *string `json:"LastName"`
+	Reference     *string `json:"Reference"`
+	CountryCode   *string `json:"CountryCode"`
+	HeadshotURL   *string `json:"HeadshotUrl"`
 }
 
 // changeRaceCtrlMsgs contains a map of race control messages.
@@ -109,32 +109,32 @@ type raceCtrlMsg struct {
 // throughout the session
 type sessionInfo struct {
 	Meeting struct {
-		Key          int    `json:"Key"`
-		Name         string `json:"Name"`
-		OfficialName string `json:"OfficialName"`
-		Location     string `json:"Location"`
-		Number       int    `json:"Number"`
+		Key          *int    `json:"Key"`
+		Name         *string `json:"Name"`
+		OfficialName *string `json:"OfficialName"`
+		Location     *string `json:"Location"`
+		Number       *uint8  `json:"Number"`
 		Country      struct {
-			Key  int    `json:"Key"`
-			Code string `json:"Code"`
-			Name string `json:"Name"`
+			Key  *int    `json:"Key"`
+			Code *string `json:"Code"`
+			Name *string `json:"Name"`
 		} `json:"Country"`
 		Circuit struct {
-			Key       int    `json:"Key"`
-			ShortName string `json:"ShortName"`
+			Key       *int    `json:"Key"`
+			ShortName *string `json:"ShortName"`
 		} `json:"Circuit"`
 	} `json:"Meeting"`
 	ArchiveStatus struct {
-		Status string `json:"Status"`
+		Status *string `json:"Status"`
 	} `json:"ArchiveStatus"`
-	Key       int    `json:"Key"`
-	Type      string `json:"Type"`
-	Number    int    `json:"Number"`
-	Name      string `json:"Name"`
-	StartDate string `json:"StartDate"`
-	EndDate   string `json:"EndDate"`
-	GmtOffset string `json:"GmtOffset"`
-	Path      string `json:"Path"`
+	Key       *int    `json:"Key"`
+	Type      *string `json:"Type"`
+	Number    *uint8  `json:"Number"`
+	Name      *string `json:"Name"`
+	StartDate *string `json:"StartDate"`
+	EndDate   *string `json:"EndDate"`
+	GMTOffset *string `json:"GMTOffset"`
+	Path      *string `json:"Path"`
 }
 
 // referenceSessionData contains a list of all session/track status changes and the corresponding
@@ -187,21 +187,20 @@ type changeTimingData struct {
 // driver. Both `referenceDriverTimingData` and `changeDriverTimingData` 'inherit' the properties
 // from `driverTimingData`
 type driverTimingData struct {
-	TimeDiffToFastest       string `json:"TimeDiffToFastest"`
-	TimeDiffToPositionAhead string `json:"TimeDiffToPositionAhead"`
-	Line                    int    `json:"Line"`         // current position
-	Position                string `json:"Position"`     // current position
-	ShowPosition            bool   `json:"ShowPosition"` // Will be false when a driver is out of the session (race), or out of the session (qualifying)
-	RacingNumber            string `json:"RacingNumber"` // the unique driver number
-	Retired                 bool   `json:"Retired"`      // car and driver have retired from the race
-	InPit                   bool   `json:"InPit"`        // car is in pit
-	PitOut                  bool   `json:"PitOut"`       // current lap is an out-lap
-	Stopped                 bool   `json:"Stopped"`      // true when car is not moving
-	Status                  int    `json:"Status"`
-	GapToLeader             string `json:"GapToLeader"`
+	TimeDiffToFastest       *string `json:"TimeDiffToFastest"`
+	TimeDiffToPositionAhead *string `json:"TimeDiffToPositionAhead"`
+	Position                *int    `json:"Line"`         // current position
+	ShowPosition            *bool   `json:"ShowPosition"` // Will be false when a driver is out of the session (race), or out of the session (qualifying)
+	RacingNumber            string  `json:"RacingNumber"` // the unique driver number
+	Retired                 *bool   `json:"Retired"`      // car and driver have retired from the race
+	InPit                   *bool   `json:"InPit"`        // car is in pit
+	PitOut                  *bool   `json:"PitOut"`       // current lap is an out-lap
+	Stopped                 *bool   `json:"Stopped"`      // true when car is not moving
+	Status                  *int    `json:"Status"`
+	GapToLeader             *string `json:"GapToLeader"`
 	IntervalToPositionAhead struct {
-		Value    string `json:"Value"`
-		Catching bool   `json:"Catching"`
+		Value    *string `json:"Value"`
+		Catching *bool   `json:"Catching"`
 	} `json:"IntervalToPositionAhead"`
 	Speeds struct {
 		FirstIntermediatePoint  driverSpeedTimingData `json:"I1"`
@@ -209,25 +208,25 @@ type driverTimingData struct {
 		SpeedTrap               driverSpeedTimingData `json:"ST"`
 	} `json:"Speeds"`
 	BestLapTime struct {
-		Value string `json:"Value"`
-		Lap   int    `json:"Lap"`
+		Value *string `json:"Value"`
+		Lap   *uint8  `json:"Lap"`
 	} `json:"BestLapTime"`
 	LastLapTime struct {
-		Value           string `json:"Value"`
-		Status          int    `json:"Status"`
-		OverallFastest  bool   `json:"OverallFastest"`
-		PersonalFastest bool   `json:"PersonalFastest"`
+		Value           *string `json:"Value"`
+		Status          *int    `json:"Status"`
+		OverallFastest  *bool   `json:"OverallFastest"`
+		PersonalFastest *bool   `json:"PersonalFastest"`
 	} `json:"LastLapTime"`
-	NumberOfLaps int `json:"NumberOfLaps"`
+	NumberOfLaps *uint8 `json:"NumberOfLaps"`
 }
 
 // driverSpeedTimingData represents speed-trap-like data captured at various points around the
 // circuit for a specific driver on a particular lap.
 type driverSpeedTimingData struct {
-	Value           string `json:"Value"`
-	Status          int    `json:"Status"`
-	OverallFastest  bool   `json:"OverallFastest"`
-	PersonalFastest bool   `json:"PersonalFastest"`
+	Value           *string `json:"Value"`
+	Status          *int    `json:"Status"`
+	OverallFastest  *bool   `json:"OverallFastest"`
+	PersonalFastest *bool   `json:"PersonalFastest"`
 }
 
 // referenceDriverTimingData contains driver timing data along with sector timing data in a slice.
@@ -257,9 +256,9 @@ type sectorTiming struct {
 	PreviousValue string `json:"PreviousValue"`
 }
 
-// lapCount represents the latest lap information of the session, in cluding the `CurrentLap` of the
-// leader in races.`
+// lapCount represents the latest lap information of the session, including the `CurrentLap` of the
+// leader in races.
 type lapCount struct {
-	CurrentLap uint8 `json:"CurrentLap"`
-	TotalLaps  uint8 `json:"TotalLaps"`
+	CurrentLap *uint8 `json:"CurrentLap"`
+	TotalLaps  *uint8 `json:"TotalLaps"`
 }

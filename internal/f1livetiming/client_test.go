@@ -15,8 +15,10 @@ import (
 	"runtime"
 	"strconv"
 	"strings"
+	"sync"
 	"testing"
 
+	"github.com/bcdxn/f1cli/internal/domain"
 	"github.com/coder/websocket"
 )
 
@@ -124,8 +126,8 @@ func TestConnectionSubscribe(t *testing.T) {
 	}
 }
 
-// TestDriverListMsg tests that the client handles the DriverList message correct and writes its own
-// domain-oriented data to the driver channel.
+// TestDriverListMsg tests that the client handles the DriverList message correctly by updating
+// the client's internal state store and writing a notification to the driver channel.
 func TestDriverListMsg(t *testing.T) {
 	ts := newWSTestServer(t, defaultWSHandler(t, "DriverList"))
 	c := NewClient(
@@ -134,28 +136,174 @@ func TestDriverListMsg(t *testing.T) {
 		WithLogger(testLogger(t)),
 	)
 
-	driverList := driverList(t)
+	expectedDriverList := driverList(t)
 	c.Negotiate()
 	go c.Connect()
-	max := len(driverList)
-	count := 0
-	for {
-		d := <-c.DriverCh()
-		count++
-		if d.Name != driverList[strconv.Itoa(d.Number)].FullName {
-			t.Errorf("expected name %s but found %s", driverList["4"].FullName, d.Name)
+
+	<-c.DriverCh()
+	actualDriverList := c.DriversState()
+
+	for _, n := range []uint8{11, 44, 55, 77} {
+		ns := strconv.Itoa(int(n))
+
+		if actualDriverList[n].Number != n {
+			t.Errorf("expected number %d but found %d", n, actualDriverList[n].Number)
 		}
-		number, err := strconv.Atoi(driverList[strconv.Itoa(d.Number)].RacingNumber)
-		if err != nil {
-			t.Errorf("unexpected racing number format in testdata - %s", driverList[strconv.Itoa(d.Number)].RacingNumber)
+		if actualDriverList[n].Name != *expectedDriverList[ns].FullName {
+			t.Errorf("expected name %s but found %s", *expectedDriverList[ns].FullName, actualDriverList[n].Name)
 		}
-		if d.Number != number {
-			t.Errorf("expected name %d but found %d", number, d.Number)
+		if actualDriverList[n].ShortName != *expectedDriverList[ns].ShortName {
+			t.Errorf("expected short name %s but found %s", *expectedDriverList[ns].ShortName, actualDriverList[n].ShortName)
 		}
-		if count >= max {
-			break
+		if actualDriverList[n].TeamName != *expectedDriverList[ns].TeamName {
+			t.Errorf("expected team name %s but found %s", *expectedDriverList[ns].TeamName, actualDriverList[n].TeamName)
+		}
+		if actualDriverList[n].TeamColor != *expectedDriverList[ns].TeamColour {
+			t.Errorf("expected team color %s but found %s", *expectedDriverList[ns].TeamColour, actualDriverList[n].TeamColor)
 		}
 	}
+	c.Close()
+}
+
+// TestTimingDataMsg tests that the client handles the TimingData message correctly by updating
+// the client's internal state store and writing a notification to the driver channel.
+func TestTimingDataMsg(t *testing.T) {
+	ts := newWSTestServer(t, defaultWSHandler(t, "TimingData"))
+	c := NewClient(
+		WithHTTPBaseURL(ts.URL),
+		WithWSBaseURL(httpToWS(t, ts.URL)),
+		WithLogger(testLogger(t)),
+	)
+
+	c.Negotiate()
+	go c.Connect()
+
+	wg := sync.WaitGroup{}
+	wg.Add(2)
+	go func() {
+		defer wg.Done()
+		<-c.DriverCh()
+	}()
+	go func() {
+		defer wg.Done()
+		<-c.EventCh()
+	}()
+	wg.Wait()
+	actualDriverList := c.DriversState()
+	weekendEvent := c.EventState()
+	if actualDriverList[55].Number != 55 {
+		t.Errorf("expected driver number 55 but found %d", actualDriverList[55].Number)
+	}
+	if actualDriverList[55].LeaderGap != "+12.562" {
+		t.Errorf("expected LeaderGap of '+12.562' but found '%s'", actualDriverList[55].LeaderGap)
+	}
+	if actualDriverList[55].IntervalGap != "+3.421" {
+		t.Errorf("expected IntervalGap of '+3.421' but found '%s'", actualDriverList[55].IntervalGap)
+	}
+	if weekendEvent.Session.FastestLapOwner != 55 {
+		t.Errorf("unexpected fastest lap owner - %d", weekendEvent.Session.FastestLapOwner)
+	}
+	c.Close()
+}
+
+// TestSessionInfoMsg tests that the client handles the SessionInfo message correctly by updating
+// the client's internal state store and writing a notification to the event channel.
+func TestSessionInfoMsg(t *testing.T) {
+	ts := newWSTestServer(t, defaultWSHandler(t, "SessionInfo"))
+	c := NewClient(
+		WithHTTPBaseURL(ts.URL),
+		WithWSBaseURL(httpToWS(t, ts.URL)),
+		WithLogger(testLogger(t)),
+	)
+	c.Negotiate()
+	go c.Connect()
+	// wait for notification on Race Weekend Event channel
+	<-c.EventCh()
+
+	event := c.EventState()
+	if event.FullName != "FORMULA 1 PIRELLI UNITED STATES GRAND PRIX 2024" {
+		t.Errorf("unexpected race weekend event name - %s", event.FullName)
+	}
+	if event.RoundNumber != 19 {
+		t.Errorf("unexpected race weekend event round # - %d", event.RoundNumber)
+	}
+	if event.CountryCode != "USA" {
+		t.Errorf("unexpected race weekend event country code - %s", event.CountryCode)
+	}
+	if event.Session.Name != "Race" {
+		t.Errorf("unexpected session name - %s", event.Session.Name)
+	}
+	if event.Session.StartDate.UTC().Format("2006-01-02T15:04:05") != "2024-10-20T19:00:00" {
+		t.Errorf("unexpected session start date - %s", event.Session.StartDate.UTC().Format("2006-01-02T15:04:05"))
+	}
+	if event.Session.EndDate.UTC().Format("2006-01-02T15:04:05") != "2024-10-20T21:00:00" {
+		t.Errorf("unexpected session start date - %s", event.Session.EndDate.UTC().Format("2006-01-02T15:04:05"))
+	}
+
+	c.Close()
+}
+
+// TestLapCountMsg tests that the client handles LapCount messages from the F1 LiveTiming API
+// correctly by updating the client's internal state store and writing a notification to the event
+// channel.
+func TestLapCountMsg(t *testing.T) {
+	ts := newWSTestServer(t, defaultWSHandler(t, "SessionInfo", "LapCount"))
+	c := NewClient(
+		WithHTTPBaseURL(ts.URL),
+		WithWSBaseURL(httpToWS(t, ts.URL)),
+		WithLogger(testLogger(t)),
+	)
+	c.Negotiate()
+	go c.Connect()
+	// wait for three notifications on the event channel
+	<-c.EventCh()
+	<-c.EventCh()
+	event := c.EventState()
+	if event.Session.CurrentLap != 1 {
+		t.Errorf("unexpected lap count - %d", event.Session.CurrentLap)
+	}
+	if event.Session.TotalLaps != 56 {
+		t.Errorf("unexpected lap count - %d", event.Session.TotalLaps)
+	}
+	<-c.EventCh()
+	event = c.EventState()
+	if event.Session.CurrentLap != 2 {
+		t.Errorf("unexpected lap count - %d", event.Session.CurrentLap)
+	}
+	if event.Session.TotalLaps != 56 {
+		t.Errorf("unexpected lap count - %d", event.Session.TotalLaps)
+	}
+	c.Close()
+}
+
+// TestTimingAppDataMsg tests that the client handles TestTimingAppData messages from the F1
+// LiveTiming API correctly by updating the client's internal state store and writing a notification
+// to the driver channel.
+func TestTimingAppDataMsg(t *testing.T) {
+	ts := newWSTestServer(t, defaultWSHandler(t, "TimingAppData"))
+	c := NewClient(
+		WithHTTPBaseURL(ts.URL),
+		WithWSBaseURL(httpToWS(t, ts.URL)),
+		WithLogger(testLogger(t)),
+	)
+	c.Negotiate()
+	go c.Connect()
+	// wait for the driver channel
+	<-c.DriverCh()
+	drivers := c.DriversState()
+	if drivers[18].TireLapCount != 1 {
+		t.Errorf("unexpected lap count - %d", drivers[18].TireLapCount)
+	}
+	if drivers[18].TireCompound != domain.TireCompoundUnknown {
+		t.Errorf("unexpected lap count - %s", drivers[18].TireCompound)
+	}
+	if drivers[20].TireLapCount != 3 {
+		t.Errorf("unexpected lap count - %d", drivers[20].TireLapCount)
+	}
+	if drivers[20].TireCompound != domain.TireCompoundSoft {
+		t.Errorf("unexpected lap count - %s", drivers[20].TireCompound)
+	}
+	c.Close()
 }
 
 /* Private Helper Functions

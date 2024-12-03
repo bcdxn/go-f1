@@ -1,0 +1,28 @@
+{
+  "C": "d-EAABD8C7-B,0|Jh,0|Ji,11|Q,9D|R,928|S,929|T,1|U,AB|Jj,0|F,103|L,34|V,27|W,4|I,1A|X,13|G,0|H,8|J,3|K,EED",
+  "M": [
+    {
+      "H": "Streaming",
+      "M": "feed",
+      "A": [
+        "TimingData",
+        {
+          "Lines": {
+            "55": {
+              "GapToLeader": "+12.562",
+              "IntervalToPositionAhead": {
+                "Value": "+3.421"
+              },
+              "LastLapTime": {
+                "Value": "1:18:341",
+                "OverallFastest": true,
+                "PersonalFastest": true
+              }
+            }
+          }
+        },
+        "2024-10-20T19:11:18.947Z"
+      ]
+    }
+  ]
+}

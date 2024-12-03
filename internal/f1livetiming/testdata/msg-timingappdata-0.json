@@ -1,0 +1,41 @@
+{
+  "C": "d-870F636-B,0|RQ4,0|RQ5,11|U,353|V,2CEE|W,2CEC|X,4|Y,A52|Cd0,0|F,7B1|L,4EB|Z,C0|a,11|I,EA|b,8B|G,2|H,53|J,37|K,D9E9",
+  "M": [
+    {
+      "H": "Streaming",
+      "M": "feed",
+      "A": [
+        "TimingAppData",
+        {
+          "Lines": {
+            "18": {
+              "Stints": {
+                "2": {
+                  "LapFlags": 0,
+                  "Compound": "UNKNOWN",
+                  "New": "false",
+                  "TyresNotChanged": "1",
+                  "TotalLaps": 1,
+                  "StartLaps": 0
+                }
+              }
+            },
+            "20": {
+              "Stints": {
+                "3": {
+                  "LapFlags": 0,
+                  "Compound": "SOFT",
+                  "New": "true",
+                  "TyresNotChanged": "0",
+                  "TotalLaps": 3,
+                  "StartLaps": 0
+                }
+              }
+            }
+          }
+        },
+        "2024-10-25T19:06:07.263Z"
+      ]
+    }
+  ]
+}
