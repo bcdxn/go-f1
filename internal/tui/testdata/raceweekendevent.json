@@ -1,0 +1,14 @@
+{
+		"Name":        "United States Grand Prix",
+		"FullName":    "FORMULA 1 PIRELLI UNITED STATES GRAND PRIX 2024",
+		"Location":    "Austin",
+		"RoundNumber": 19,
+		"CountryCode": "USA",
+		"Session": {
+			"Type":            "Race",
+			"Name":            "Race",
+			"CurrentLap":      0,
+			"TotalLaps":       56,
+			"FastestLapOwner": 44
+		}
+	}

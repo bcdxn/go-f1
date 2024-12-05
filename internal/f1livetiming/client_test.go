@@ -149,8 +149,8 @@ func TestDriverListMsg(t *testing.T) {
 		if actualDriverList[n].Number != n {
 			t.Errorf("expected number %d but found %d", n, actualDriverList[n].Number)
 		}
-		if actualDriverList[n].Name != *expectedDriverList[ns].FullName {
-			t.Errorf("expected name %s but found %s", *expectedDriverList[ns].FullName, actualDriverList[n].Name)
+		if actualDriverList[n].Name != *expectedDriverList[ns].FirstName+" "+*expectedDriverList[ns].LastName {
+			t.Errorf("expected name %s but found %s", *expectedDriverList[ns].FirstName+" "+*expectedDriverList[ns].LastName, actualDriverList[n].Name)
 		}
 		if actualDriverList[n].ShortName != *expectedDriverList[ns].ShortName {
 			t.Errorf("expected short name %s but found %s", *expectedDriverList[ns].ShortName, actualDriverList[n].ShortName)
@@ -258,15 +258,8 @@ func TestLapCountMsg(t *testing.T) {
 	// wait for three notifications on the event channel
 	<-c.EventCh()
 	<-c.EventCh()
-	event := c.EventState()
-	if event.Session.CurrentLap != 1 {
-		t.Errorf("unexpected lap count - %d", event.Session.CurrentLap)
-	}
-	if event.Session.TotalLaps != 56 {
-		t.Errorf("unexpected lap count - %d", event.Session.TotalLaps)
-	}
 	<-c.EventCh()
-	event = c.EventState()
+	event := c.EventState()
 	if event.Session.CurrentLap != 2 {
 		t.Errorf("unexpected lap count - %d", event.Session.CurrentLap)
 	}

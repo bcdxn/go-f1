@@ -1,0 +1,26 @@
+{
+  "C": "d-903A1698-B,0|b7,0|b8,11|E,13D|F,11FA|G,1228|H,2|CA,369|Ma,0|I,2EB|J,F8|K,4F|L,1|M,1B|N,2F|O,0|P,15|Q,12|R,496B",
+  "M": [
+    {
+      "H": "Streaming",
+      "M": "feed",
+      "A": [
+        "RaceControlMessages",
+        {
+          "Messages": {
+            "46": {
+              "Utc": "2024-10-19T18:38:01",
+              "Lap": 19,
+              "Category": "Flag",
+              "Flag": "YELLOW",
+              "Scope": "Sector",
+              "Sector": 15,
+              "Message": "YELLOW IN TRACK SECTOR 15"
+            }
+          }
+        },
+        "2024-10-19T18:38:01.493Z"
+      ]
+    }
+  ]
+}

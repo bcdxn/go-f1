@@ -33,7 +33,7 @@ type Color struct {
 	PrimaryForeground lipgloss.AdaptiveColor
 }
 
-func DefaultStyles() *Style {
+func Default() *Style {
 	red := lipgloss.Color("#CF040E")
 	yellow := lipgloss.Color("#FAD105")
 	green := lipgloss.Color("#17C81D")

@@ -157,6 +157,7 @@ func (c *Client) Connect() {
 	close(c.done)
 }
 
+// Close cleans up any open channels and stops the websocket listener if it's still listening.
 func (c *Client) Close() {
 	if c.listening {
 		c.listening = false
@@ -467,11 +468,15 @@ func (c *Client) updateDriverIntrinsicData(msg []byte) {
 			}
 		}
 		// Overwrite fields
-		if driverData.ShortName != nil && *driverData.ShortName != "" {
+		if driverData.ShortName != nil {
 			driver.ShortName = *driverData.ShortName
 		}
-		if driverData.FullName != nil && *driverData.FullName != "" {
-			driver.Name = *driverData.FullName
+		if driverData.FirstName != nil && driverData.LastName != nil {
+			if driverData.NameFormat != nil && *driverData.NameFormat == "LastNameIsPrimary" {
+				driver.Name = *driverData.LastName + " " + *driverData.FirstName
+			} else {
+				driver.Name = *driverData.FirstName + " " + *driverData.LastName
+			}
 		}
 		if driverData.TeamName != nil && *driverData.TeamName != "" {
 			driver.TeamName = *driverData.TeamName

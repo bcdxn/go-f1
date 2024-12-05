@@ -78,6 +78,7 @@ type driverData struct {
 	Reference     *string `json:"Reference"`
 	CountryCode   *string `json:"CountryCode"`
 	HeadshotURL   *string `json:"HeadshotUrl"`
+	NameFormat    *string `json:"NameFormat"`
 }
 
 // changeRaceCtrlMsgs contains a map of race control messages.

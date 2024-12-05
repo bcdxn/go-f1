@@ -2,11 +2,18 @@ package summary
 
 import (
 	"bytes"
+	"encoding/json"
 	"io"
 	"log/slog"
+	"os"
+	"path"
+	"path/filepath"
+	"runtime"
 	"testing"
 	"time"
 
+	"github.com/bcdxn/f1cli/internal/domain"
+	"github.com/charmbracelet/bubbles/spinner"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/x/exp/teatest"
 )
@@ -18,17 +25,17 @@ import (
 // Test that the app exits after receiving a ctrl+c key press event and notifies its exit via the
 // provided 'done' channel.
 func TestAppExitOnCtrlC(t *testing.T) {
-	done := make(chan int)
+	done := make(chan error)
 	tm := teatest.NewTestModel(
 		t,
 		newModel(testLogger(t), done),
 		teatest.WithInitialTermSize(100, 150),
 	)
 
-	code, m := exitTestTeaProgram(t, tm, done)
+	m, err := exitTestTeaProgram(t, tm, done)
 
-	if code != 0 {
-		t.Fatal("should not have exited with error but found exit code", code)
+	if err != nil {
+		t.Fatal("should not have exited with error - ", err)
 	}
 	if !m.isLoading {
 		t.Fatal("m.isLoading should be true")
@@ -36,282 +43,42 @@ func TestAppExitOnCtrlC(t *testing.T) {
 }
 
 // TestHandleEventInfoMsg validates that the EventInfoMsg is handled correctly
-func TestHandleEventInfoMsg(t *testing.T) {
-	done := make(chan int)
+func TestHandleRaceWeekendEventMsg(t *testing.T) {
+	done := make(chan error)
 	m := newModel(testLogger(t), done)
 	tm := teatest.NewTestModel(
 		t,
 		m,
 		teatest.WithInitialTermSize(100, 150),
 	)
-	// create a new EventInfoMsg for testing
-	msg := EventInfoMsg{
-		MeetingName: "Test Meeting",
-		SessionType: "Practice",
-		SessionName: "Practice 1",
+	msg := RaceWeekendEventMsg{
+		data: domain.RaceWeekendEvent{
+			Name:        "United States Grand Prix",
+			FullName:    "FORMULA 1 PIRELLI UNITED STATES GRAND PRIX 2024",
+			Location:    "Austin",
+			RoundNumber: 19,
+			CountryCode: "USA",
+			Session: domain.Session{
+				Type:       domain.SessionTypeRace,
+				Name:       "Race",
+				CurrentLap: 2,
+				TotalLaps:  56,
+			},
+		},
 	}
-	// send the message to the TUI app
 	tm.Send(msg)
-	// stop the program so we can look at the final model state
-	_, fm := exitTestTeaProgram(t, tm, done)
-	// check that the message was handled properly
-	if fm.eventInfo.MeetingName != msg.MeetingName {
-		t.Fatalf("expected %s but found %s", msg.MeetingName, fm.eventInfo.MeetingName)
+	exitTestTeaProgram(t, tm, done)
+	out, err := io.ReadAll(tm.FinalOutput(t))
+	if err != nil {
+		t.Error(err)
 	}
-	if fm.eventInfo.SessionType != sessionTypePractice {
-		t.Fatalf("expected %d but found %d", sessionTypePractice, fm.eventInfo.SessionType)
-	}
+	teatest.RequireEqualOutput(t, out)
 }
 
-func TestHandleDriverInfoMsg(t *testing.T) {
-	done := make(chan int)
-	m := newModel(testLogger(t), done)
-	tm := teatest.NewTestModel(
-		t,
-		m,
-		teatest.WithInitialTermSize(100, 150),
-	)
-	// create a new DriverInfoMsg for testing
-	msg := DriverInfoMsg{
-		Number:       44,
-		Name:         "Lewis Hamilton",
-		ShortName:    "HAM",
-		Position:     1,
-		IntervalGap:  "LAP 1",
-		LeaderGap:    "LAP 1",
-		LastLapTime:  "1.11:111",
-		BestLapTime:  "1.11:222",
-		InPit:        boolPointer(false),
-		TireCompound: "SOFT",
-		TireLapCount: 1,
-	}
-	// send the message to the TUI app
-	tm.Send(msg)
-	// stop the program so we can look at the final model state
-	_, fm := exitTestTeaProgram(t, tm, done)
-	// check that the message was handled properly
-	if fm.drivers[44].Name != msg.Name {
-		t.Fatalf("expected %s but found %s", msg.Name, fm.drivers[44].Name)
-	}
-	if fm.drivers[44].ShortName != msg.ShortName {
-		t.Fatalf("expected %s but found %s", msg.Name, fm.drivers[44].Name)
-	}
-	if fm.drivers[44].Position != msg.Position {
-		t.Fatalf("expected %d but found %d", msg.Position, fm.drivers[44].Position)
-	}
-}
-
-func TestHandleDriverInfoMsgDelta(t *testing.T) {
-	done := make(chan int)
-	m := newModel(testLogger(t), done)
-	tm := teatest.NewTestModel(
-		t,
-		m,
-		teatest.WithInitialTermSize(100, 150),
-	)
-	// create a new DriverInfoMsg for testing
-	tm.Send(DriverInfoMsg{
-		Number:       44,
-		Name:         "Lewis Hamilton",
-		ShortName:    "HAM",
-		Position:     1,
-		IntervalGap:  "LAP 1",
-		LeaderGap:    "LAP 1",
-		LastLapTime:  "1.11:111",
-		BestLapTime:  "1.11:222",
-		InPit:        boolPointer(false),
-		TireCompound: "SOFT",
-		TireLapCount: 1,
-	})
-	msg := DriverInfoMsg{
-		Number:       44,
-		Name:         "Lewis Hamilton",
-		ShortName:    "HAM",
-		Position:     5,
-		IntervalGap:  "LAP 1",
-		LeaderGap:    "LAP 1",
-		LastLapTime:  "1.11:111",
-		BestLapTime:  "1.11:222",
-		InPit:        boolPointer(false),
-		TireCompound: "SOFT",
-		TireLapCount: 1,
-	}
-	msg2 := DriverInfoMsg{
-		Number:       44,
-		Position:     0,
-		InPit:        nil,
-		TireLapCount: 5,
-	}
-	// send the delta message to the TUI app
-	tm.Send(msg)
-	// send the delta message to the TUI app
-	tm.Send(msg2)
-	// stop the program so we can look at the final model state
-	_, fm := exitTestTeaProgram(t, tm, done)
-	if fm.drivers[44].Position != msg.Position {
-		// Ensure that a zero value doesn't overwrite existing value
-		t.Fatalf("expected %d but found %d", msg.Position, fm.drivers[44].Position)
-	}
-	if fm.drivers[44].Tire.Compound != msg.TireCompound {
-		// Ensure that a zero value doesn't overwrite existing value
-		t.Fatalf("expected %s but found %s", msg.TireCompound, fm.drivers[44].Tire.Compound)
-	}
-	if fm.drivers[44].Tire.LapCount != msg2.TireLapCount {
-		// Ensure that lap count is updated
-		t.Fatalf("expected %d but found %d", msg2.TireLapCount, fm.drivers[44].Tire.LapCount)
-	}
-	if fm.drivers[44].InPit != msg.InPit {
-		// Ensure that a zero value doesn't overwrite existing value
-		t.Fatalf("expected %b but found %b", msg.InPit, fm.drivers[44].InPit)
-	}
-}
-
-func TestHandleDriverInfoMsgFastestLap(t *testing.T) {
-	done := make(chan int)
-	m := newModel(testLogger(t), done)
-	tm := teatest.NewTestModel(
-		t,
-		m,
-		teatest.WithInitialTermSize(100, 150),
-	)
-	msg := DriverInfoMsg{
-		Number:       44,
-		Name:         "Lewis Hamilton",
-		ShortName:    "HAM",
-		Position:     5,
-		IntervalGap:  "LAP 1",
-		LeaderGap:    "LAP 1",
-		LastLapTime:  "1.11:222",
-		BestLapTime:  "1.11:111",
-		InPit:        boolPointer(false),
-		TireCompound: "SOFT",
-		TireLapCount: 1,
-	}
-	// send the message to the TUI app
-	tm.Send(msg)
-	// stop the program so we can look at the final model state
-	_, fm := exitTestTeaProgram(t, tm, done)
-	if fm.fastestLapTime != msg.BestLapTime {
-		t.Fatalf("expected %s but found %s", msg.BestLapTime, fm.fastestLapTime)
-	}
-	if fm.fastestLapOwner != 44 {
-		t.Fatalf("expected %d but found %d", 44, fm.fastestLapOwner)
-	}
-}
-
-func TestHandleDriverInfoMsgFastestLapUpdate(t *testing.T) {
-	done := make(chan int)
-	m := newModel(testLogger(t), done)
-	tm := teatest.NewTestModel(
-		t,
-		m,
-		teatest.WithInitialTermSize(100, 150),
-	)
-	msg := DriverInfoMsg{
-		Number:       44,
-		Name:         "Lewis Hamilton",
-		ShortName:    "HAM",
-		Position:     5,
-		IntervalGap:  "LAP 1",
-		LeaderGap:    "LAP 1",
-		LastLapTime:  "1.11:111",
-		BestLapTime:  "1.11:222",
-		InPit:        boolPointer(false),
-		TireCompound: "SOFT",
-		TireLapCount: 1,
-	}
-	// send the message to the TUI app
-	tm.Send(msg)
-
-	msg = DriverInfoMsg{
-		Number:       1,
-		Name:         "Max Verstappen",
-		ShortName:    "VER",
-		Position:     6,
-		IntervalGap:  "LAP 1",
-		LeaderGap:    "LAP 1",
-		LastLapTime:  "1.11:000",
-		BestLapTime:  "1.12:000",
-		InPit:        boolPointer(false),
-		TireCompound: "SOFT",
-		TireLapCount: 1,
-	}
-	// send the delta message to the TUI app
-	tm.Send(msg)
-	// stop the program so we can look at the final model state
-	_, fm := exitTestTeaProgram(t, tm, done)
-	// make assertions
-	if fm.fastestLapTime != msg.LastLapTime {
-		t.Fatalf("expected %s but found %s", msg.LastLapTime, fm.fastestLapTime)
-	}
-	if fm.fastestLapOwner != 1 {
-		t.Fatalf("expected %d but found %d", 1, fm.fastestLapOwner)
-	}
-}
-
-func TestHandleLapCountMsg(t *testing.T) {
-	done := make(chan int)
-	m := newModel(testLogger(t), done)
-	tm := teatest.NewTestModel(
-		t,
-		m,
-		teatest.WithInitialTermSize(100, 150),
-	)
-	msg := LapCountMsg{
-		Total:     51,
-		Completed: 27,
-	}
-	// send the message to the TUI app
-	tm.Send(msg)
-
-	msg2 := LapCountMsg{
-		Completed: 28,
-	}
-	msg3 := LapCountMsg{
-		Completed: 28,
-	}
-	// send the message to the TUI app
-	tm.Send(msg)
-	tm.Send(msg2)
-	tm.Send(msg3)
-	// stop the program so we can look at the final model state
-	_, fm := exitTestTeaProgram(t, tm, done)
-	// make assertions
-	if fm.totalPlannedLaps != msg.Total {
-		t.Fatalf("expected %d but found %d", msg.Total, fm.totalPlannedLaps)
-	}
-	if fm.completedLaps != msg2.Completed {
-		t.Fatalf("expected %d but found %d", msg2.Completed, fm.completedLaps)
-	}
-}
-
-func TestHandleRaceCtrlMsg(t *testing.T) {
-	done := make(chan int)
-	m := newModel(testLogger(t), done)
-	tm := teatest.NewTestModel(
-		t,
-		m,
-		teatest.WithInitialTermSize(100, 150),
-	)
-	msg := RaceCtrlMsg{
-		Category: "Yellow Flag",
-		Message:  "Race Control - Yellow flag in Sector 2",
-	}
-	// send the message to the TUI app
-	tm.Send(msg)
-	// stop the program so we can look at the final model state
-	_, fm := exitTestTeaProgram(t, tm, done)
-	// make assertions
-	if fm.raceCtrlMsg.Title != msg.Category {
-		t.Fatalf("expected %s but found %s", msg.Category, fm.raceCtrlMsg.Title)
-	}
-	if fm.raceCtrlMsg.Body != msg.Message {
-		t.Fatalf("expected %s but found %s", msg.Message, fm.raceCtrlMsg.Body)
-	}
-}
-
+// TestWindowInitialSize checks that the default starting model captures the terminal window size
+// as those dimensions are required to render the view appropriately.
 func TestWindowInitialSize(t *testing.T) {
-	done := make(chan int)
+	done := make(chan error)
 	m := newModel(testLogger(t), done)
 	tm := teatest.NewTestModel(
 		t,
@@ -319,7 +86,7 @@ func TestWindowInitialSize(t *testing.T) {
 		teatest.WithInitialTermSize(100, 150),
 	)
 	// stop the program so we can look at the final model state
-	_, fm := exitTestTeaProgram(t, tm, done)
+	fm, _ := exitTestTeaProgram(t, tm, done)
 	if fm.width != 98 {
 		t.Fatalf("expected %d but found %d", 98, fm.width)
 	}
@@ -328,20 +95,97 @@ func TestWindowInitialSize(t *testing.T) {
 	}
 }
 
+// TestInitialView checks that the loading spinner is shown before any data is loaded from the F1
+// LiveTiming API.
 func TestInitialView(t *testing.T) {
-	done := make(chan int)
-	m := newModel(testLogger(t), done)
+	done := make(chan error)
+	m := newInitialModel(testLogger(t), done)
 	tm := teatest.NewTestModel(
 		t,
 		m,
 		teatest.WithInitialTermSize(100, 150),
 	)
 
-	teatest.WaitFor(t, tm.Output(), func(bts []byte) bool {
-		return bytes.Contains(bts, []byte(" loading..."))
-	}, teatest.WithCheckInterval(time.Millisecond*100), teatest.WithDuration(time.Second*1))
+	exitTestTeaProgram(t, tm, done)
+	// capture/check TUI view
+	out, err := io.ReadAll(tm.FinalOutput(t))
+	if err != nil {
+		t.Error(err)
+	}
+	if !bytes.Contains(out, []byte("loading...")) {
+		t.Errorf("expected view to contain 'loading...' but found '%s'", out)
+	}
+}
+
+// TestRacePreStart checks that view is rendered correctly before any timing data has been loaded
+// from the F1 LiveTiming API.
+func TestRacePreStart(t *testing.T) {
+	done := make(chan error)
+	m := newIsLoadedRaceModel(t, testLogger(t), done)
+	tm := teatest.NewTestModel(
+		t,
+		m,
+		teatest.WithInitialTermSize(100, 150),
+	)
+	exitTestTeaProgram(t, tm, done)
+	// capture/check TUI view
+	out, err := io.ReadAll(tm.FinalOutput(t))
+	if err != nil {
+		t.Error(err)
+	}
+	teatest.RequireEqualOutput(t, out)
+}
+
+// TestRaceLapIncrement checks that the view is rendered correctly as lap count is incremented over
+// the course of a race.
+func TestRaceLapIncrement(t *testing.T) {
+	done := make(chan error)
+	m := newIsLoadedRaceModel(t, testLogger(t), done)
+	rwEvent := m.event
+	tm := teatest.NewTestModel(
+		t,
+		m,
+		teatest.WithInitialTermSize(100, 150),
+	)
+	rwEvent.Session.CurrentLap = 1
+	tm.Send(RaceWeekendEventMsg{
+		data: rwEvent,
+	})
+	rwEvent.Session.CurrentLap = 2
+	tm.Send(RaceWeekendEventMsg{
+		data: rwEvent,
+	})
+	exitTestTeaProgram(t, tm, done)
+	// capture/check TUI view
+	out, err := io.ReadAll(tm.FinalOutput(t))
+	if err != nil {
+		t.Error(err)
+	}
+	teatest.RequireEqualOutput(t, out)
 
 	exitTestTeaProgram(t, tm, done)
+}
+
+func TestTimingTable(t *testing.T) {
+	dl := driverList(t)
+	e := raceWeekendEvent(t)
+
+	done := make(chan error)
+	m := newIsLoadedRaceModel(t, testLogger(t), done)
+	m.drivers = dl
+	m.event = e
+	tm := teatest.NewTestModel(
+		t,
+		m,
+		teatest.WithInitialTermSize(100, 150),
+	)
+	exitTestTeaProgram(t, tm, done)
+	// capture/check TUI view
+	out, err := io.ReadAll(tm.FinalOutput(t))
+	if err != nil {
+		t.Error(err)
+	}
+	teatest.RequireEqualOutput(t, out)
 }
 
 /* Test Helper Functions
@@ -355,15 +199,15 @@ func testLogger(t *testing.T) *slog.Logger {
 }
 
 // exitTestTeaProgram is a test helper function that sends a keypress event to quit the bubbletea test
-// program, waits for it exit, and then returns the exit code along with the final model state
-func exitTestTeaProgram(t *testing.T, tm *teatest.TestModel, done chan int) (int, Model) {
-	var code int
+// program, waits for it exit, and then returns the error along with the final model state
+func exitTestTeaProgram(t *testing.T, tm *teatest.TestModel, done chan error) (Model, error) {
+	var err error
 	t.Helper()
 	tm.Send(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'q'}})
 	for {
 		// listen for exit code on the on done channel
-		c, ok := <-done
-		code = c
+		e, ok := <-done
+		err = e
 		// when the done channel is closed, we will all the test to continue
 		if !ok {
 			break
@@ -375,9 +219,82 @@ func exitTestTeaProgram(t *testing.T, tm *teatest.TestModel, done chan int) (int
 		t.Fatalf("final model have the wrong type: %T", fm)
 	}
 
-	return code, m
+	return m, err
 }
 
-func boolPointer(b bool) *bool {
-	return &b
+// intitialModel returns a default initial model as would be returned by the TUI outside of the
+// testing environment.
+func newInitialModel(logger *slog.Logger, done chan error) Model {
+	return newModel(logger, done)
+}
+
+// newIsLoadedRaceModel returns a model that represents the state of the application _after_
+// receiving race weekend data and driver data loaded.
+func newIsLoadedRaceModel(t *testing.T, logger *slog.Logger, done chan error) Model {
+	s := spinner.New()
+	s.Spinner = spinner.MiniDot
+	startTime, err := time.Parse("2006-01-02T15:04:05-0700", "2024-10-20T14:00:00-0700")
+	if err != nil {
+		t.Errorf("error parsing date string in test %v", err)
+	}
+
+	return Model{
+		logger:    logger,
+		isLoading: false,
+		spinner:   s,
+		drivers:   make(map[uint8]domain.Driver),
+		done:      done,
+		event: domain.RaceWeekendEvent{
+			Name:        "United States Grand Prix",
+			FullName:    "FORMULA 1 PIRELLI UNITED STATES GRAND PRIX 2024",
+			Location:    "Austin",
+			RoundNumber: 19,
+			CountryCode: "USA",
+			Session: domain.Session{
+				Type:       domain.SessionTypeRace,
+				Name:       "Race",
+				CurrentLap: 0,
+				TotalLaps:  56,
+				StartDate:  startTime,
+			},
+		},
+	}
+}
+
+// driverList parses the testdata file and returns a map of Driver domain objects.
+func driverList(t *testing.T) map[uint8]domain.Driver {
+	driversJson, err := os.ReadFile(path.Join(testdataDir(), "drivers.json"))
+	if err != nil {
+		t.Errorf("error loading driver list data for test - %s", err.Error())
+	}
+
+	var drivers map[uint8]domain.Driver
+	err = json.Unmarshal(driversJson, &drivers)
+	if err != nil {
+		t.Errorf("error loading driver list data for test - %s", err.Error())
+	}
+
+	return drivers
+}
+
+// raceWeekendEvent parses the testdata file and returns a RaceWeekendEvent domain object.
+func raceWeekendEvent(t *testing.T) domain.RaceWeekendEvent {
+	eventJson, err := os.ReadFile(path.Join(testdataDir(), "raceweekendevent.json"))
+	if err != nil {
+		t.Errorf("error loading race weekend event data for test - %s", err.Error())
+	}
+
+	var event domain.RaceWeekendEvent
+	err = json.Unmarshal(eventJson, &event)
+	if err != nil {
+		t.Errorf("error loading race weekend event data for test - %s", err.Error())
+	}
+
+	return event
+}
+
+// getTestdataDir gets the testdata directory path relative to the invocation of the tests.
+func testdataDir() string {
+	_, p, _, _ := runtime.Caller(0)
+	return path.Join(filepath.Dir(p), "testdata")
 }

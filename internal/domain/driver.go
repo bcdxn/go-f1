@@ -34,4 +34,5 @@ type Driver struct {
 	TireLapCount uint8        // The current lap count that the driver is on
 	IsInPit      bool         // InPit indicates if the driver is in the pit
 	IsPitOut     bool         // PitOut indicates if the driver is on an outlap
+	OutOfSession bool         // The driver is out of the session due to crash, mechanical failure, etc.
 }

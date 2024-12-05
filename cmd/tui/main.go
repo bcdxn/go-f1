@@ -10,7 +10,7 @@ import (
 
 func main() {
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
-	done := make(chan int)
+	done := make(chan error)
 
 	go func() {
 		err := summary.RunTUI(logger, done)
@@ -19,5 +19,8 @@ func main() {
 		}
 	}()
 
-	<-done
+	err := <-done
+	if err != nil {
+		logger.Error("TUI exited with error", "err", err)
+	}
 }

@@ -33,6 +33,7 @@ type Session struct {
 	EndDate         time.Time // The end time of the session - will be zerovalue until session has ended
 	GMTOffset       string    // GMTOffset is the track-timezone delta with GMT/UTC
 	FastestLapOwner uint8     // FastestLapOwner is the number of the driver that has the fastest lap in the session
+	FastestLapTime  string    // FastestLapTime is the time of the fastest lap of the session
 	CurrentLap      uint8     // The current lead lap (only applicable for races)
 	TotalLaps       uint8     // The total number of planned laps (only applicable for races)
 }
