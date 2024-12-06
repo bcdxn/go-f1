@@ -188,37 +188,45 @@ type changeTimingData struct {
 // driver. Both `referenceDriverTimingData` and `changeDriverTimingData` 'inherit' the properties
 // from `driverTimingData`
 type driverTimingData struct {
-	TimeDiffToFastest       *string `json:"TimeDiffToFastest"`
-	TimeDiffToPositionAhead *string `json:"TimeDiffToPositionAhead"`
-	Position                *int    `json:"Line"`         // current position
-	ShowPosition            *bool   `json:"ShowPosition"` // Will be false when a driver is out of the session (race), or out of the session (qualifying)
-	RacingNumber            string  `json:"RacingNumber"` // the unique driver number
-	Retired                 *bool   `json:"Retired"`      // car and driver have retired from the race
-	InPit                   *bool   `json:"InPit"`        // car is in pit
-	PitOut                  *bool   `json:"PitOut"`       // current lap is an out-lap
-	Stopped                 *bool   `json:"Stopped"`      // true when car is not moving
-	Status                  *int    `json:"Status"`
-	GapToLeader             *string `json:"GapToLeader"`
-	IntervalToPositionAhead struct {
-		Value    *string `json:"Value"`
-		Catching *bool   `json:"Catching"`
-	} `json:"IntervalToPositionAhead"`
-	Speeds struct {
-		FirstIntermediatePoint  driverSpeedTimingData `json:"I1"`
-		SecondIntermediatePoint driverSpeedTimingData `json:"I2"`
-		SpeedTrap               driverSpeedTimingData `json:"ST"`
-	} `json:"Speeds"`
-	BestLapTime struct {
-		Value *string `json:"Value"`
-		Lap   *uint8  `json:"Lap"`
-	} `json:"BestLapTime"`
-	LastLapTime struct {
-		Value           *string `json:"Value"`
-		Status          *int    `json:"Status"`
-		OverallFastest  *bool   `json:"OverallFastest"`
-		PersonalFastest *bool   `json:"PersonalFastest"`
-	} `json:"LastLapTime"`
-	NumberOfLaps *uint8 `json:"NumberOfLaps"`
+	TimeDiffToFastest       *string              `json:"TimeDiffToFastest"`
+	TimeDiffToPositionAhead *string              `json:"TimeDiffToPositionAhead"`
+	Position                *int                 `json:"Line"`         // current position
+	ShowPosition            *bool                `json:"ShowPosition"` // Will be false when a driver is out of the session (race), or out of the session (qualifying)
+	RacingNumber            string               `json:"RacingNumber"` // the unique driver number
+	Retired                 *bool                `json:"Retired"`      // car and driver have retired from the race
+	InPit                   *bool                `json:"InPit"`        // car is in pit
+	PitOut                  *bool                `json:"PitOut"`       // current lap is an out-lap
+	Stopped                 *bool                `json:"Stopped"`      // true when car is not moving
+	Status                  *int                 `json:"Status"`
+	GapToLeader             *string              `json:"GapToLeader"`
+	IntervalToPositionAhead driverTimingInterval `json:"IntervalToPositionAhead"`
+	Speeds                  driverTimingSpeeds   `json:"Speeds"`
+	BestLapTime             driverTimingBestLap  `json:"BestLapTime"`
+	LastLapTime             driverTimingLastLap  `json:"LastLapTime"`
+	NumberOfLaps            *uint8               `json:"NumberOfLaps"`
+}
+
+type driverTimingInterval struct {
+	Value    *string `json:"Value"`
+	Catching *bool   `json:"Catching"`
+}
+
+type driverTimingSpeeds struct {
+	FirstIntermediatePoint  driverSpeedTimingData `json:"I1"`
+	SecondIntermediatePoint driverSpeedTimingData `json:"I2"`
+	SpeedTrap               driverSpeedTimingData `json:"ST"`
+}
+
+type driverTimingBestLap struct {
+	Value *string `json:"Value"`
+	Lap   *uint8  `json:"Lap"`
+}
+
+type driverTimingLastLap struct {
+	Value           *string `json:"Value"`
+	Status          *int    `json:"Status"`
+	OverallFastest  *bool   `json:"OverallFastest"`
+	PersonalFastest *bool   `json:"PersonalFastest"`
 }
 
 // driverSpeedTimingData represents speed-trap-like data captured at various points around the
@@ -243,18 +251,64 @@ type changeDriverTimingData struct {
 	Sectors map[string]sectorTiming `json:"Sectors"`
 }
 
+func changeTimingDataFromReference(ref referenceTimingData) changeTimingData {
+	ctd := changeTimingData{
+		Lines: make(map[string]changeDriverTimingData),
+	}
+
+	for num, rtd := range ref.Lines {
+		ctd.Lines[num] = changeDriverTimingData{
+			driverTimingData: driverTimingData{
+				TimeDiffToFastest:       rtd.TimeDiffToFastest,
+				TimeDiffToPositionAhead: rtd.TimeDiffToPositionAhead,
+				Position:                rtd.Position,
+				ShowPosition:            rtd.ShowPosition,
+				RacingNumber:            rtd.RacingNumber,
+				Retired:                 rtd.Retired,
+				InPit:                   rtd.InPit,
+				PitOut:                  rtd.PitOut,
+				Stopped:                 rtd.Stopped,
+				Status:                  rtd.Status,
+				GapToLeader:             rtd.GapToLeader,
+				IntervalToPositionAhead: driverTimingInterval{
+					Value:    rtd.IntervalToPositionAhead.Value,
+					Catching: rtd.IntervalToPositionAhead.Catching,
+				},
+				Speeds: driverTimingSpeeds{
+					FirstIntermediatePoint:  rtd.Speeds.FirstIntermediatePoint,
+					SecondIntermediatePoint: rtd.Speeds.SecondIntermediatePoint,
+					SpeedTrap:               rtd.Speeds.SpeedTrap,
+				},
+				BestLapTime: driverTimingBestLap{
+					Value: rtd.BestLapTime.Value,
+					Lap:   rtd.BestLapTime.Lap,
+				},
+				LastLapTime: driverTimingLastLap{
+					Value:           rtd.LastLapTime.Value,
+					Status:          rtd.LastLapTime.Status,
+					OverallFastest:  rtd.LastLapTime.OverallFastest,
+					PersonalFastest: rtd.LastLapTime.PersonalFastest,
+				},
+				NumberOfLaps: rtd.NumberOfLaps,
+			},
+		}
+	}
+
+	return ctd
+}
+
 // sectorTiming represents timing for 1 of 3 sectors around the crcuit for a specific driver on a
 // particular lap.
 type sectorTiming struct {
-	Stopped         bool   `json:"Stopped"`
-	Value           string `json:"Value"`
-	Status          int    `json:"Status"`
-	OverallFastest  bool   `json:"OverallFastest"`
-	PersonalFastest bool   `json:"PersonalFastest"`
-	Segments        []struct {
-		Status int `json:"Status"`
+	Stopped      *bool   `json:"Stopped"`
+	Value        *string `json:"Value"`
+	Status       *int    `json:"Status"`
+	OverallBest  *bool   `json:"OverallFastest"`
+	PersonalBest *bool   `json:"PersonalFastest"`
+	Segments     []struct {
+		Status *int `json:"Status"`
 	} `json:"Segments"`
-	PreviousValue string `json:"PreviousValue"`
+	PreviousValue *string `json:"PreviousValue"`
 }
 
 // lapCount represents the latest lap information of the session, including the `CurrentLap` of the

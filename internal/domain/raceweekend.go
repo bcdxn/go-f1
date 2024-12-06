@@ -26,14 +26,15 @@ type RaceWeekendEvent struct {
 
 // Session represents the various sessions within a race weekend, e.g.:
 type Session struct {
-	Type            SessionType
-	Number          uint8     // For sessions that have multiple rounds, e.g.: practice *2* and qualifying *3*
-	Name            string    // The name of the session, e.g.: "Practice 1", "Race", etc.
-	StartDate       time.Time // The start of the session
-	EndDate         time.Time // The end time of the session - will be zerovalue until session has ended
-	GMTOffset       string    // GMTOffset is the track-timezone delta with GMT/UTC
-	FastestLapOwner uint8     // FastestLapOwner is the number of the driver that has the fastest lap in the session
-	FastestLapTime  string    // FastestLapTime is the time of the fastest lap of the session
-	CurrentLap      uint8     // The current lead lap (only applicable for races)
-	TotalLaps       uint8     // The total number of planned laps (only applicable for races)
+	Type               SessionType
+	Number             uint8           // For sessions that have multiple rounds, e.g.: practice *2* and qualifying *3*
+	Name               string          // The name of the session, e.g.: "Practice 1", "Race", etc.
+	StartDate          time.Time       // The start of the session
+	EndDate            time.Time       // The end time of the session - will be zerovalue until session has ended
+	GMTOffset          string          // GMTOffset is the track-timezone delta with GMT/UTC
+	FastestLapOwner    uint8           // FastestLapOwner is the number of the driver that has the fastest lap in the session
+	FastestLapTime     string          // FastestLapTime is the time of the fastest lap of the session
+	FastestSectorOwner map[uint8]uint8 // The owner of the fastest time in each sector
+	CurrentLap         uint8           // The current lead lap (only applicable for races)
+	TotalLaps          uint8           // The total number of planned laps (only applicable for races)
 }

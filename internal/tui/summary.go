@@ -289,6 +289,367 @@ func newModel(logger *slog.Logger, done chan error) Model {
 		drivers:   make(map[uint8]domain.Driver),
 		done:      done,
 	}
+	// TODO: REMOVE
+	// m.isLoading = false
+	// startTime, _ := time.Parse("2006-01-02T15:04:05-0700", "2024-10-20T14:00:00-0700")
+	// m.event = domain.RaceWeekendEvent{
+	// 	Name:        "United States Grand Prix",
+	// 	FullName:    "FORMULA 1 PIRELLI UNITED STATES GRAND PRIX 2024",
+	// 	Location:    "Austin",
+	// 	RoundNumber: 19,
+	// 	CountryCode: "USA",
+	// 	Session: domain.Session{
+	// 		Type:            domain.SessionTypeRace,
+	// 		Name:            "Race",
+	// 		CurrentLap:      0,
+	// 		TotalLaps:       56,
+	// 		StartDate:       startTime,
+	// 		FastestLapOwner: 44,
+	// 		FastestSectorOwner: map[uint8]uint8{
+	// 			0: 4,
+	// 			1: 1,
+	// 			2: 81,
+	// 		},
+	// 	},
+	// }
+	// m.drivers = map[uint8]domain.Driver{
+	// 	4: {
+	// 		Number:       4,
+	// 		Name:         "Lando NORRIS",
+	// 		ShortName:    "NOR",
+	// 		TeamName:     "McLaren",
+	// 		TeamColor:    "FF8000",
+	// 		Position:     1,
+	// 		TireCompound: domain.TireCompoundMedium,
+	// 		TireLapCount: 2,
+	// 		LastLap: struct {
+	// 			Time           string
+	// 			IsPersonalBest bool
+	// 		}{
+	// 			Time:           "1:21.127",
+	// 			IsPersonalBest: true,
+	// 		},
+	// 		BestLapTime: "1:21.127",
+	// 		Sectors: []domain.Sector{
+	// 			{
+	// 				IsActive:       true,
+	// 				Time:           "23.123",
+	// 				IsPersonalBest: true,
+	// 				IsOverallBest:  true,
+	// 			},
+	// 			{
+	// 				IsActive:       true,
+	// 				Time:           "23.123",
+	// 				IsPersonalBest: true,
+	// 				IsOverallBest:  false,
+	// 			},
+	// 			{
+	// 				IsActive:       true,
+	// 				Time:           "23.123",
+	// 				IsPersonalBest: false,
+	// 				IsOverallBest:  false,
+	// 			},
+	// 		},
+	// 	},
+	// 	1: {
+	// 		Number:       1,
+	// 		Name:         "Max VERSTAPPEN",
+	// 		ShortName:    "VER",
+	// 		TeamName:     "Red Bull Racing",
+	// 		TeamColor:    "3671C6",
+	// 		Position:     2,
+	// 		TireCompound: domain.TireCompoundMedium,
+	// 		TireLapCount: 2,
+	// 		LastLap: struct {
+	// 			Time           string
+	// 			IsPersonalBest bool
+	// 		}{
+	// 			Time:           "1:23.198",
+	// 			IsPersonalBest: false,
+	// 		},
+	// 		BestLapTime: "1:21.148",
+	// 		Sectors: []domain.Sector{
+	// 			{
+	// 				IsActive:       true,
+	// 				Time:           "23.123",
+	// 				IsPersonalBest: false,
+	// 				IsOverallBest:  false,
+	// 			},
+	// 			{
+	// 				IsActive:       true,
+	// 				Time:           "23.123",
+	// 				IsPersonalBest: true,
+	// 				IsOverallBest:  true,
+	// 			},
+	// 			{
+	// 				IsActive:       true,
+	// 				Time:           "23.123",
+	// 				IsPersonalBest: false,
+	// 				IsOverallBest:  false,
+	// 			},
+	// 		},
+	// 	},
+	// 	55: {
+	// 		Number:       5,
+	// 		Name:         "Carlos Sainz",
+	// 		ShortName:    "SAI",
+	// 		TeamName:     "Ferrari",
+	// 		TeamColor:    "E80020",
+	// 		Position:     3,
+	// 		TireCompound: domain.TireCompoundSoft,
+	// 		TireLapCount: 2,
+	// 		LastLap: struct {
+	// 			Time           string
+	// 			IsPersonalBest bool
+	// 		}{
+	// 			Time:           "1:22.331",
+	// 			IsPersonalBest: true,
+	// 		},
+	// 		BestLapTime: "1:22.331",
+	// 		Sectors: []domain.Sector{
+	// 			{
+	// 				IsActive:       true,
+	// 				Time:           "23.123",
+	// 				IsPersonalBest: true,
+	// 				IsOverallBest:  false,
+	// 			},
+	// 			{
+	// 				IsActive:       true,
+	// 				Time:           "23.123",
+	// 				IsPersonalBest: true,
+	// 				IsOverallBest:  true,
+	// 			},
+	// 			{
+	// 				IsActive:       true,
+	// 				Time:           "23.123",
+	// 				IsPersonalBest: true,
+	// 				IsOverallBest:  false,
+	// 			},
+	// 		},
+	// 	},
+	// 	16: {
+	// 		Number:       16,
+	// 		Name:         "Charles Leclerc",
+	// 		ShortName:    "LEC",
+	// 		TeamName:     "Ferrari",
+	// 		TeamColor:    "E80020",
+	// 		Position:     4,
+	// 		TireCompound: domain.TireCompoundIntermediate,
+	// 		TireLapCount: 2,
+	// 		Sectors: []domain.Sector{
+	// 			{
+	// 				IsActive:       true,
+	// 				Time:           "23.123",
+	// 				IsPersonalBest: false,
+	// 				IsOverallBest:  false,
+	// 			},
+	// 			{
+	// 				IsActive:       true,
+	// 				Time:           "23.123",
+	// 				IsPersonalBest: true,
+	// 				IsOverallBest:  false,
+	// 			},
+	// 			{
+	// 				IsActive:       true,
+	// 				Time:           "23.123",
+	// 				IsPersonalBest: true,
+	// 				IsOverallBest:  false,
+	// 			},
+	// 		},
+	// 	},
+	// 	81: {
+	// 		Number:       81,
+	// 		Name:         "Oscar Piastri",
+	// 		ShortName:    "PIA",
+	// 		TeamName:     "McLaren",
+	// 		TeamColor:    "FF8000",
+	// 		Position:     5,
+	// 		TireCompound: domain.TireCompoundFullWet,
+	// 		TireLapCount: 2,
+	// 		Sectors: []domain.Sector{
+	// 			{
+	// 				IsActive:       true,
+	// 				Time:           "23.123",
+	// 				IsPersonalBest: false,
+	// 				IsOverallBest:  false,
+	// 			},
+	// 			{
+	// 				IsActive:       true,
+	// 				Time:           "23.123",
+	// 				IsPersonalBest: false,
+	// 				IsOverallBest:  false,
+	// 			},
+	// 			{
+	// 				IsActive:       true,
+	// 				Time:           "23.123",
+	// 				IsPersonalBest: true,
+	// 				IsOverallBest:  true,
+	// 			},
+	// 		},
+	// 	},
+	// 	10: {
+	// 		Number:       10,
+	// 		Name:         "Pierre Gasly",
+	// 		ShortName:    "GAS",
+	// 		TeamName:     "Alpine",
+	// 		TeamColor:    "0093cc",
+	// 		Position:     6,
+	// 		TireCompound: domain.TireCompoundUnknown,
+	// 		TireLapCount: 2,
+	// 		Sectors: []domain.Sector{
+	// 			{
+	// 				IsActive:       true,
+	// 				Time:           "23.123",
+	// 				IsPersonalBest: false,
+	// 				IsOverallBest:  false,
+	// 			},
+	// 			{
+	// 				IsActive:       true,
+	// 				Time:           "23.123",
+	// 				IsPersonalBest: false,
+	// 				IsOverallBest:  false,
+	// 			},
+	// 			{
+	// 				IsActive: false,
+	// 			},
+	// 		},
+	// 	},
+	// 	14: {
+	// 		Number:       14,
+	// 		Name:         "Fernando Alonso",
+	// 		ShortName:    "ALO",
+	// 		TeamName:     "Aston Martin",
+	// 		TeamColor:    "229971",
+	// 		Position:     7,
+	// 		TireCompound: domain.TireCompoundSoft,
+	// 		TireLapCount: 2,
+	// 		Sectors: []domain.Sector{
+	// 			{
+	// 				IsActive: true,
+	// 				Time:     "23.123",
+	// 			},
+	// 			{
+	// 				IsActive: false,
+	// 			},
+	// 			{
+	// 				IsActive: false,
+	// 			},
+	// 		},
+	// 	},
+	// 	20: {
+	// 		Number:       20,
+	// 		Name:         "Kevin Magnussen",
+	// 		ShortName:    "MAG",
+	// 		TeamName:     "Haas F1 Team",
+	// 		TeamColor:    "B6BABD",
+	// 		Position:     8,
+	// 		TireCompound: domain.TireCompoundHard,
+	// 		TireLapCount: 2,
+	// 	},
+	// 	11: {
+	// 		Number:    11,
+	// 		Name:      "Sergio Perez",
+	// 		ShortName: "PER",
+	// 		TeamName:  "Red Bull Racing",
+	// 		TeamColor: "3671C6",
+	// 		Position:  9,
+	// 	},
+	// 	22: {
+	// 		Number:    22,
+	// 		Name:      "Yuki Tsunoda",
+	// 		ShortName: "TSU",
+	// 		TeamName:  "RB",
+	// 		TeamColor: "6692FF",
+	// 		Position:  10,
+	// 	},
+	// 	27: {
+	// 		Number:    27,
+	// 		Name:      "Nico Hulkenberg",
+	// 		ShortName: "HUL",
+	// 		TeamName:  "Haas F1 Team",
+	// 		TeamColor: "B6BABD",
+	// 		Position:  11,
+	// 	},
+	// 	31: {
+	// 		Number:    31,
+	// 		Name:      "Esteban Ocon",
+	// 		ShortName: "OCO",
+	// 		TeamName:  "Alpine",
+	// 		TeamColor: "0093cc",
+	// 		Position:  12,
+	// 	},
+	// 	18: {
+	// 		Number:    18,
+	// 		Name:      "Lance Stroll",
+	// 		ShortName: "STR",
+	// 		TeamName:  "Aston Martin",
+	// 		TeamColor: "229971",
+	// 		Position:  13,
+	// 	},
+	// 	23: {
+	// 		Number:    23,
+	// 		Name:      "Alexander Albon",
+	// 		ShortName: "ALB",
+	// 		TeamName:  "Williams",
+	// 		TeamColor: "64C4FF",
+	// 		Position:  14,
+	// 	},
+	// 	43: {
+	// 		Number:    43,
+	// 		Name:      "Franco Colapinto",
+	// 		ShortName: "COL",
+	// 		TeamName:  "Williams",
+	// 		TeamColor: "64C4FF",
+	// 		Position:  15,
+	// 	},
+	// 	77: {
+	// 		Number:    77,
+	// 		Name:      "Valtteri Bottas",
+	// 		ShortName: "BOT",
+	// 		TeamName:  "Kick Sauber",
+	// 		TeamColor: "52e252",
+	// 		Position:  16,
+	// 	},
+	// 	44: {
+	// 		Number:    44,
+	// 		Name:      "Lewis HAMILTON",
+	// 		ShortName: "HAM",
+	// 		TeamName:  "Mercedes",
+	// 		TeamColor: "27F4D2",
+	// 		Position:  17,
+	// 	},
+	// 	24: {
+	// 		Number:    24,
+	// 		Name:      "Zhou Guanyu",
+	// 		ShortName: "ZHO",
+	// 		TeamName:  "Kick Sauber",
+	// 		TeamColor: "52e252",
+	// 		Position:  18,
+	// 	},
+	// 	30: {
+	// 		Number:    30,
+	// 		Name:      "Liam Lawson",
+	// 		ShortName: "LAW",
+	// 		TeamName:  "RB",
+	// 		TeamColor: "6692FF",
+	// 		Position:  19,
+	// 	},
+	// 	63: {
+	// 		Number:    63,
+	// 		Name:      "George Russell",
+	// 		ShortName: "RUS",
+	// 		TeamName:  "Mercedes",
+	// 		TeamColor: "27F4D2",
+	// 		Position:  20,
+	// 		LastLap: struct {
+	// 			Time           string
+	// 			IsPersonalBest bool
+	// 		}{
+	// 			Time:           "1:21.127",
+	// 			IsPersonalBest: false,
+	// 		},
+	// 	},
+	// }
 
 	return m
 }
@@ -400,10 +761,10 @@ func viewTable(m Model) string {
 			driverName(d, m.event),
 			driverIntervalGap(d),
 			driverLeaderGap(d),
-			driverTire(d), // tire/stint data
-			"TODO",        // sectors
+			driverTire(d),
+			driverSectors(d, m.event),
 			driverLastLap(d, &m.event),
-			driverBestLap(d, &m.event), // best
+			driverBestLap(d, &m.event),
 		})
 	}
 
@@ -426,7 +787,13 @@ func viewTable(m Model) string {
 		Headers("POS", "DRIVER", "INT", "LEADER", "TIRE", "SECTORS", "LAST", "BEST").
 		Rows(rows...)
 
-	return t.Render()
+	return lipgloss.PlaceHorizontal(
+		m.width,
+		lipgloss.Center,
+		t.Render(),
+		lipgloss.WithWhitespaceChars("."),
+		lipgloss.WithWhitespaceForeground(s.Color.Subtle),
+	)
 }
 
 // sortDrivers returns a sorted of list of drivers, sorted by their leaderboard position in the
@@ -465,7 +832,7 @@ func driverName(d domain.Driver, e domain.RaceWeekendEvent) string {
 }
 
 var (
-	leaderRe = regexp.MustCompile(`/LAP/`)
+	leaderRe = regexp.MustCompile(`LAP`)
 )
 
 // driverIntervalGap returns the driver interval to the car ahead formatted for the timing table.
@@ -539,4 +906,35 @@ func driverBestLap(d domain.Driver, e *domain.RaceWeekendEvent) string {
 	}
 
 	return v
+}
+
+func driverSectors(d domain.Driver, e domain.RaceWeekendEvent) string {
+	if d.OutOfSession || len(d.Sectors) < 1 {
+		return "-"
+	}
+
+	sectors := make([]string, 0, 3)
+
+	for i, sector := range d.Sectors {
+		sectorStyle := lipgloss.NewStyle()
+		if !sector.IsActive {
+			sectorStyle = sectorStyle.Foreground(s.Color.Subtle)
+		} else if sector.IsOverallBest && e.Session.FastestSectorOwner[uint8(i)] == d.Number {
+			sectorStyle = sectorStyle.Foreground(s.Color.Purple)
+		} else if sector.IsPersonalBest {
+			sectorStyle = sectorStyle.Foreground(s.Color.Green)
+		} else {
+			sectorStyle = sectorStyle.Foreground(s.Color.Yellow)
+		}
+		sectors = append(sectors, sectorStyle.Render("▃▃"))
+	}
+
+	return lipgloss.JoinHorizontal(
+		lipgloss.Center,
+		sectors[0],
+		" ",
+		sectors[1],
+		" ",
+		sectors[2],
+	)
 }

@@ -111,6 +111,7 @@ func (c *Client) Connect() {
 	}
 	// Create the websocket connection with the F1 livetiming API server
 	conn, _, err := websocket.Dial(context.Background(), u.String(), nil)
+	conn.SetReadLimit(-1)
 	if err != nil {
 		c.done <- err
 		close(c.done)
@@ -397,11 +398,19 @@ func (c *Client) processMessage(msg []byte) {
 	err = json.Unmarshal([]byte(referenceMsg), &referenceData)
 	if err == nil && referenceData.MessageInterval != "" {
 		c.logger.Debug("received reference data message")
-		// c.processReferenceMessage(referenceData)
+		c.processReferenceMessage(referenceData)
 		return
 	}
 	// The message wasn't a known 'change' or 'reference' message type
 	c.logger.Debug("unhandled message", "msg", msg)
+}
+
+func (c *Client) processReferenceMessage(referenceMessage f1ReferenceMessage) {
+	c.updateSessionInfo(referenceMessage.Reference.SessionInfo)
+	c.updateDriverIntrinsicData(referenceMessage.Reference.DriverList)
+	c.updateDriverTimingData(
+		changeTimingDataFromReference(referenceMessage.Reference.TimingData),
+	)
 }
 
 // processChangeMessage handles an incoming change message from the F1 Live Timing API; change
@@ -421,13 +430,13 @@ func (c *Client) processChangeMessage(changeMessage f1ChangeMessage) {
 			}
 			switch msgType {
 			case "DriverList":
-				c.updateDriverIntrinsicData(msg)
+				c.handleDriverListMsg(msg)
 			case "TimingData":
-				c.updateDriverTimingData(msg)
+				c.handleDriverTimingData(msg)
 			case "SessionInfo":
-				c.updateSessionInfoData(msg)
+				c.handleSessionInfoMsg(msg)
 			case "LapCount":
-				c.updateLapCountData(msg)
+				c.handleLapCountMsg(msg)
 			case "TimingAppData":
 				c.updateTimingAppData(msg)
 			default:
@@ -444,16 +453,23 @@ const (
 	f1APIDateLayout = "2006-01-02T15:04:05-0700" // date format used by the F1 LiveTiming API
 )
 
-// updateDriverIntrinsicData converts DriverList msg from the F1 Live Timing API to the Driver
-// domain models stored in the client's internal state store and writes a notification even to the
-// driver channel to let consumers know that the data has been updated.
-func (c *Client) updateDriverIntrinsicData(msg []byte) {
+// handleDriverListMsg converts the websocket message to a strongly typed struct and updates the
+// client's store via `updateDriverIntrinsicData`.
+func (c *Client) handleDriverListMsg(msg []byte) {
 	var driverDataMsg map[string]driverData
 	err := json.Unmarshal(msg, &driverDataMsg)
 	if err != nil {
 		c.logger.Warn("driver data msg in unknown format", "msg", string(msg))
 		return
 	}
+
+	c.updateDriverIntrinsicData(driverDataMsg)
+}
+
+// updateDriverIntrinsicData converts DriverList msg from the F1 Live Timing API to the Driver
+// domain models stored in the client's internal state store and writes a notification even to the
+// driver channel to let consumers know that the data has been updated.
+func (c *Client) updateDriverIntrinsicData(driverDataMsg map[string]driverData) {
 	// update data for each driver to the drivers map
 	for driverNumber, driverData := range driverDataMsg {
 		number := c.atoui8(driverNumber)
@@ -490,16 +506,22 @@ func (c *Client) updateDriverIntrinsicData(msg []byte) {
 	c.driverCh <- struct{}{}
 }
 
-// updateDriverTimingData converts TimingData msg from the F1 Live Timing API to the Driver domain
-// models stored in the client's internal state store and writes a notification even to the driver
-// channel to let consumers know that the data has been updated.
-func (c *Client) updateDriverTimingData(msg []byte) {
+// handleDriverTimingData converts the TmingData websocket message from the F1 LiveTiming API to
+// strongly typed struct and updates the client's stre via the `updateDriverTimingData`.
+func (c *Client) handleDriverTimingData(msg []byte) {
 	var timingDataMsg changeTimingData
 	err := json.Unmarshal(msg, &timingDataMsg)
 	if err != nil {
 		c.logger.Warn("timing data msg in unknown format", "msg", string(msg))
 		return
 	}
+	c.updateDriverTimingData(timingDataMsg)
+}
+
+// updateDriverTimingData converts TimingData msg from the F1 Live Timing API to the Driver domain
+// models stored in the client's internal state store and writes a notification even to the driver
+// channel to let consumers know that the data has been updated.
+func (c *Client) updateDriverTimingData(timingDataMsg changeTimingData) {
 	// only send a notification event fon the session channel if the session was updated
 	sessionUpdated := false
 	// add data for each driver to the drivers map
@@ -537,6 +559,34 @@ func (c *Client) updateDriverTimingData(msg []byte) {
 				sessionUpdated = true
 			}
 		}
+		// Write sectors
+		for sectorNum, sector := range timingData.Sectors {
+			i := c.atoui8(sectorNum)
+			// First clear sectors after the current sector
+			if i < 1 {
+				// Clear sector 2 since the driver just set the time in the first sector
+				c.drivers[number].Sectors[1] = domain.Sector{IsActive: false}
+			}
+			if i < 2 {
+				// Clear sector 3 since the driver just set the time in the first or second sector
+				c.drivers[number].Sectors[2] = domain.Sector{IsActive: false}
+			}
+			// Create and overwrite the current sector
+			newSector := domain.Sector{
+				Time:     *sector.Value,
+				IsActive: true,
+			}
+			if sector.OverallBest != nil {
+				newSector.IsOverallBest = *sector.OverallBest
+				if newSector.IsOverallBest {
+					c.event.Session.FastestSectorOwner[i] = number
+				}
+			}
+			if sector.PersonalBest != nil {
+				newSector.IsPersonalBest = *sector.PersonalBest
+			}
+			c.drivers[number].Sectors[i] = newSector
+		}
 		// write the driver data back to the client state store
 		c.drivers[number] = driver
 	}
@@ -547,68 +597,78 @@ func (c *Client) updateDriverTimingData(msg []byte) {
 	}
 }
 
-// updateSessionInfoData converts SessionInfo msg from the F1 Live Timing API to the
-// `RaceWeekendEvent` stored in the client's internal state store and writes a notification on the
-// event channel to let consumers know the data has changed.
-func (c *Client) updateSessionInfoData(msg []byte) {
-	var sessionInfo sessionInfo
-	err := json.Unmarshal(msg, &sessionInfo)
+// handleSessionInfoMsg converts websocket msg to strongly typed struct and update's the client
+// store via the `updateSessionInfo` helper function.
+func (c *Client) handleSessionInfoMsg(msg []byte) {
+	var s sessionInfo
+	err := json.Unmarshal(msg, &s)
 	if err != nil {
 		c.logger.Warn("timing data msg in unknown format", "msg", string(msg))
 		return
 	}
 
-	if sessionInfo.Meeting.Name != nil {
-		c.event.Name = *sessionInfo.Meeting.Name
+	c.updateSessionInfo(s)
+}
+
+// updateSessionInfo converts SessionInfo msg from the F1 Live Timing API to the `RaceWeekendEvent`
+// stored in the client's internal state store and writes a notification on the event channel to let
+// consumers know the data has changed.
+func (c *Client) updateSessionInfo(session sessionInfo) {
+	if session.Meeting.Name != nil {
+		c.event.Name = *session.Meeting.Name
 	}
-	if sessionInfo.Meeting.OfficialName != nil {
-		c.event.FullName = *sessionInfo.Meeting.OfficialName
+	if session.Meeting.OfficialName != nil {
+		c.event.FullName = *session.Meeting.OfficialName
 	}
-	if sessionInfo.Meeting.Location != nil {
-		c.event.Location = *sessionInfo.Meeting.Location
+	if session.Meeting.Location != nil {
+		c.event.Location = *session.Meeting.Location
 	}
-	if sessionInfo.Meeting.Number != nil {
-		c.event.RoundNumber = *sessionInfo.Meeting.Number
+	if session.Meeting.Number != nil {
+		c.event.RoundNumber = *session.Meeting.Number
 	}
-	if sessionInfo.Meeting.Country.Code != nil {
-		c.event.CountryCode = *sessionInfo.Meeting.Country.Code
+	if session.Meeting.Country.Code != nil {
+		c.event.CountryCode = *session.Meeting.Country.Code
 	}
-	if sessionInfo.Meeting.Country.Name != nil {
-		c.event.CountryName = *sessionInfo.Meeting.Country.Name
+	if session.Meeting.Country.Name != nil {
+		c.event.CountryName = *session.Meeting.Country.Name
 	}
-	if sessionInfo.Meeting.Circuit.ShortName != nil {
-		c.event.CircuitShortName = *sessionInfo.Meeting.Circuit.ShortName
+	if session.Meeting.Circuit.ShortName != nil {
+		c.event.CircuitShortName = *session.Meeting.Circuit.ShortName
 	}
-	if sessionInfo.Name != nil {
-		c.event.Session.Name = *sessionInfo.Name
+	if session.Name != nil {
+		c.event.Session.Name = *session.Name
 	}
-	if sessionInfo.Number != nil {
-		c.event.Session.Number = *sessionInfo.Number
+	if session.Number != nil {
+		c.event.Session.Number = *session.Number
 	}
-	if sessionInfo.GMTOffset != nil {
-		c.event.Session.GMTOffset = strings.Join(strings.Split(*sessionInfo.GMTOffset, ":")[:2], "")
+	if session.GMTOffset != nil {
+		c.event.Session.GMTOffset = strings.Join(strings.Split(*session.GMTOffset, ":")[:2], "")
 	}
-	if sessionInfo.StartDate != nil && c.event.Session.GMTOffset != "" {
-		c.event.Session.StartDate, _ = time.Parse(f1APIDateLayout, *sessionInfo.StartDate+c.event.Session.GMTOffset)
+	if session.StartDate != nil && c.event.Session.GMTOffset != "" {
+		c.event.Session.StartDate, _ = time.Parse(f1APIDateLayout, *session.StartDate+c.event.Session.GMTOffset)
 	}
-	if sessionInfo.EndDate != nil && c.event.Session.GMTOffset != "" {
-		c.event.Session.EndDate, _ = time.Parse(f1APIDateLayout, *sessionInfo.EndDate+c.event.Session.GMTOffset)
+	if session.EndDate != nil && c.event.Session.GMTOffset != "" {
+		c.event.Session.EndDate, _ = time.Parse(f1APIDateLayout, *session.EndDate+c.event.Session.GMTOffset)
 	}
 	// Notifiy consumers that the event state has changed
 	c.eventCh <- struct{}{}
 }
 
-// updateLapCountData converts LapCount msg from the F1 Live Timing API to the
-// `RaceWeekendEvent` stored in the client's internal state store and writes a notification on the
-// event channel to let consumers know the data has changed.
-func (c *Client) updateLapCountData(msg []byte) {
+// handleLapCountMsg converts a websocket message from the F1 Live Timing API to a strongly typed
+// struct and updates the client's internal store via the `updateLapCountData` helper function.
+func (c *Client) handleLapCountMsg(msg []byte) {
 	var lc lapCount
 	err := json.Unmarshal(msg, &lc)
 	if err != nil {
 		c.logger.Warn("lap count msg in unknown format", "msg", string(msg))
 		return
 	}
+}
 
+// updateLapCountData converts LapCount msg from the F1 Live Timing API to the RaceWeekendEvent`
+// stored in the client's internal state store and writes a notification on the event channel to let
+// consumers know the data has changed.
+func (c *Client) updateLapCountData(lc lapCount) {
 	if lc.CurrentLap != nil {
 		c.event.Session.CurrentLap = *lc.CurrentLap
 	}

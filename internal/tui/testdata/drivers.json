@@ -12,7 +12,9 @@
 			"Time": "1:21.127",
 			"IsPersonalBest": true
 		},
-		"BestLapTime": "1:21.127"
+		"BestLapTime": "1:21.127",
+		"LeaderGap": "LAP 2",
+		"IntervalGap": "LAP 2"
 	},
 	"1": {
 		"Number": 1,
@@ -27,7 +29,9 @@
 			"Time": "1:23.198",
 			"IsPersonalBest": false
 		},
-		"BestLapTime": "1:21.148"
+		"BestLapTime": "1:21.148",
+		"LeaderGap": "+12.561",
+		"IntervalGap": "+3.421"
 	},
 	"55": {
 		"Number": 5,
@@ -42,7 +46,9 @@
 			"Time": "1:22.331",
 			"IsPersonalBest": true
 		},
-		"BestLapTime": "1:22.331"
+		"BestLapTime": "1:22.331",
+		"LeaderGap": "+12.562",
+		"IntervalGap": "+3.422"
 	},
 	"16": {
 		"Number": 16,
@@ -57,7 +63,9 @@
 			"Time": "1:22.331",
 			"IsPersonalBest": true
 		},
-		"BestLapTime": "1:21.148"
+		"BestLapTime": "1:21.148",
+		"LeaderGap": "+12.563",
+		"IntervalGap": "+3.423"
 	},
 	"81": {
 		"Number": 81,
@@ -72,7 +80,9 @@
 			"Time": "1:22.331",
 			"IsPersonalBest": true
 		},
-		"BestLapTime": "1:21.148"
+		"BestLapTime": "1:21.148",
+		"LeaderGap": "+12.564",
+		"IntervalGap": "+3.424"
 	},
 	"10": {
 		"Number": 10,
@@ -87,7 +97,9 @@
 			"Time": "1:22.331",
 			"IsPersonalBest": true
 		},
-		"BestLapTime": "1:21.148"
+		"BestLapTime": "1:21.148",
+		"LeaderGap": "+12.565",
+		"IntervalGap": "+3.425"
 	},
 	"14": {
 		"Number": 14,
@@ -102,7 +114,9 @@
 			"Time": "1:22.331",
 			"IsPersonalBest": true
 		},
-		"BestLapTime": "1:21.148"
+		"BestLapTime": "1:21.148",
+		"LeaderGap": "+12.566",
+		"IntervalGap": "+3.426"
 	},
 	"20": {
 		"Number": 20,
@@ -117,7 +131,9 @@
 			"Time": "1:22.331",
 			"IsPersonalBest": true
 		},
-		"BestLapTime": "1:21.148"
+		"BestLapTime": "1:21.148",
+		"LeaderGap": "+12.567",
+		"IntervalGap": "+3.427"
 	},
 	"11": {
 		"Number": 11,
@@ -130,7 +146,9 @@
 			"Time": "1:22.331",
 			"IsPersonalBest": true
 		},
-		"BestLapTime": "1:21.148"
+		"BestLapTime": "1:21.148",
+		"LeaderGap": "+12.568",
+		"IntervalGap": "+3.428"
 	},
 	"22": {
 		"Number": 22,
@@ -143,7 +161,9 @@
 			"Time": "1:22.331",
 			"IsPersonalBest": true
 		},
-		"BestLapTime": "1:21.148"
+		"BestLapTime": "1:21.148",
+		"LeaderGap": "+12.569",
+		"IntervalGap": "+3.429"
 	},
 	"27": {
 		"Number": 27,
@@ -156,7 +176,9 @@
 			"Time": "1:22.331",
 			"IsPersonalBest": true
 		},
-		"BestLapTime": "1:21.148"
+		"BestLapTime": "1:21.148",
+		"LeaderGap": "+12.570",
+		"IntervalGap": "+3.430"
 	},
 	"31": {
 		"Number": 31,
@@ -169,7 +191,9 @@
 			"Time": "1:22.331",
 			"IsPersonalBest": true
 		},
-		"BestLapTime": "1:21.148"
+		"BestLapTime": "1:21.148",
+		"LeaderGap": "+12.571",
+		"IntervalGap": "+3.431"
 	},
 	"18": {
 		"Number": 18,
@@ -182,7 +206,9 @@
 			"Time": "1:22.331",
 			"IsPersonalBest": true
 		},
-		"BestLapTime": "1:21.148"
+		"BestLapTime": "1:21.148",
+		"LeaderGap": "+12.572",
+		"IntervalGap": "+3.432"
 	},
 	"23": {
 		"Number": 23,
@@ -195,7 +221,9 @@
 			"Time": "1:22.331",
 			"IsPersonalBest": true
 		},
-		"BestLapTime": "1:23.9842"
+		"BestLapTime": "1:23.9842",
+		"LeaderGap": "+12.573",
+		"IntervalGap": "+3.433"
 	},
 	"43": {
 		"Number": 43,
@@ -208,7 +236,9 @@
 			"Time": "1:22.331",
 			"IsPersonalBest": true
 		},
-		"BestLapTime": "1:21.994"
+		"BestLapTime": "1:21.994",
+		"LeaderGap": "+12.574",
+		"IntervalGap": "+3.434"
 	},
 	"77": {
 		"Number": 77,
@@ -221,7 +251,9 @@
 			"Time": "1:22.331",
 			"IsPersonalBest": true
 		},
-		"BestLapTime": "1:22.002"
+		"BestLapTime": "1:22.002",
+		"LeaderGap": "+12.575",
+		"IntervalGap": "+3.435"
 	},
 	"44": {
 		"Number": 44,
@@ -234,7 +266,9 @@
 			"Time": "1:22.331",
 			"IsPersonalBest": true
 		},
-		"BestLapTime": "1:22.889"
+		"BestLapTime": "1:22.889",
+		"LeaderGap": "+12.576",
+		"IntervalGap": "+3.436"
 	},
 	"24": {
 		"Number": 24,
@@ -247,7 +281,9 @@
 			"Time": "1:22.331",
 			"IsPersonalBest": true
 		},
-		"BestLapTime": "1:22.358"
+		"BestLapTime": "1:22.358",
+		"LeaderGap": "+12.577",
+		"IntervalGap": "+3.437"
 	},
 	"30": {
 		"Number": 30,
@@ -260,7 +296,9 @@
 			"Time": "1:22.331",
 			"IsPersonalBest": true
 		},
-		"BestLapTime": "1:24.546"
+		"BestLapTime": "1:24.546",
+		"LeaderGap": "+12.578",
+		"IntervalGap": "+3.438"
 	},
 	"63": {
 		"Number": 63,
@@ -273,6 +311,8 @@
 			"Time": "1:21.127",
 			"IsPersonalBest": false
 		},
-		"BestLapTime": "1:22.348"
+		"BestLapTime": "1:22.348",
+		"LeaderGap": "+12.579",
+		"IntervalGap": "+3.439"
 	}
 }

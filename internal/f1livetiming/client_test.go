@@ -126,6 +126,75 @@ func TestConnectionSubscribe(t *testing.T) {
 	}
 }
 
+func TestReferenceMsg(t *testing.T) {
+	ts := newWSTestServer(t, defaultWSHandler(t, "reference"))
+	c := NewClient(
+		WithHTTPBaseURL(ts.URL),
+		WithWSBaseURL(httpToWS(t, ts.URL)),
+		WithLogger(testLogger(t)),
+	)
+
+	expectedDriverList := driverList(t)
+	c.Negotiate()
+	go c.Connect()
+
+	wg := sync.WaitGroup{}
+	wg.Add(2)
+
+	go func() {
+		defer wg.Done()
+		<-c.DriverCh()
+	}()
+	go func() {
+		defer wg.Done()
+		<-c.EventCh()
+	}()
+	wg.Wait()
+	actualDriverList := c.DriversState()
+	event := c.EventState()
+
+	// validate driver data
+	for _, n := range []uint8{11, 44, 55, 77} {
+		ns := strconv.Itoa(int(n))
+
+		if actualDriverList[n].Number != n {
+			t.Errorf("expected number %d but found %d", n, actualDriverList[n].Number)
+		}
+		if actualDriverList[n].Name != *expectedDriverList[ns].FirstName+" "+*expectedDriverList[ns].LastName {
+			t.Errorf("expected name %s but found %s", *expectedDriverList[ns].FirstName+" "+*expectedDriverList[ns].LastName, actualDriverList[n].Name)
+		}
+		if actualDriverList[n].ShortName != *expectedDriverList[ns].ShortName {
+			t.Errorf("expected short name %s but found %s", *expectedDriverList[ns].ShortName, actualDriverList[n].ShortName)
+		}
+		if actualDriverList[n].TeamName != *expectedDriverList[ns].TeamName {
+			t.Errorf("expected team name %s but found %s", *expectedDriverList[ns].TeamName, actualDriverList[n].TeamName)
+		}
+		if actualDriverList[n].TeamColor != *expectedDriverList[ns].TeamColour {
+			t.Errorf("expected team color %s but found %s", *expectedDriverList[ns].TeamColour, actualDriverList[n].TeamColor)
+		}
+	}
+	// validate event/session data
+	if event.FullName != "FORMULA 1 PIRELLI UNITED STATES GRAND PRIX 2024" {
+		t.Errorf("unexpected race weekend event name - %s", event.FullName)
+	}
+	if event.RoundNumber != 19 {
+		t.Errorf("unexpected race weekend event round # - %d", event.RoundNumber)
+	}
+	if event.CountryCode != "USA" {
+		t.Errorf("unexpected race weekend event country code - %s", event.CountryCode)
+	}
+	if event.Session.Name != "Race" {
+		t.Errorf("unexpected session name - %s", event.Session.Name)
+	}
+	if event.Session.StartDate.UTC().Format("2006-01-02T15:04:05") != "2024-10-20T19:00:00" {
+		t.Errorf("unexpected session start date - %s", event.Session.StartDate.UTC().Format("2006-01-02T15:04:05"))
+	}
+	if event.Session.EndDate.UTC().Format("2006-01-02T15:04:05") != "2024-10-20T21:00:00" {
+		t.Errorf("unexpected session start date - %s", event.Session.EndDate.UTC().Format("2006-01-02T15:04:05"))
+	}
+	c.Close()
+}
+
 // TestDriverListMsg tests that the client handles the DriverList message correctly by updating
 // the client's internal state store and writing a notification to the driver channel.
 func TestDriverListMsg(t *testing.T) {
@@ -183,9 +252,11 @@ func TestTimingDataMsg(t *testing.T) {
 	go func() {
 		defer wg.Done()
 		<-c.DriverCh()
+		<-c.DriverCh()
 	}()
 	go func() {
 		defer wg.Done()
+		<-c.EventCh()
 		<-c.EventCh()
 	}()
 	wg.Wait()

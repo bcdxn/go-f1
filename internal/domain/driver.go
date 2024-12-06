@@ -35,4 +35,12 @@ type Driver struct {
 	IsInPit      bool         // InPit indicates if the driver is in the pit
 	IsPitOut     bool         // PitOut indicates if the driver is on an outlap
 	OutOfSession bool         // The driver is out of the session due to crash, mechanical failure, etc.
+	Sectors      []Sector
+}
+
+type Sector struct {
+	Time           string
+	IsPersonalBest bool
+	IsOverallBest  bool
+	IsActive       bool
 }
