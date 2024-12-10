@@ -52,7 +52,7 @@ func TestHandleRaceWeekendEventMsg(t *testing.T) {
 		teatest.WithInitialTermSize(100, 150),
 	)
 	msg := RaceWeekendEventMsg{
-		data: domain.RaceWeekendEvent{
+		Data: domain.RaceWeekendEvent{
 			Name:        "United States Grand Prix",
 			FullName:    "FORMULA 1 PIRELLI UNITED STATES GRAND PRIX 2024",
 			Location:    "Austin",
@@ -149,11 +149,11 @@ func TestRaceLapIncrement(t *testing.T) {
 	)
 	rwEvent.Session.CurrentLap = 1
 	tm.Send(RaceWeekendEventMsg{
-		data: rwEvent,
+		Data: rwEvent,
 	})
 	rwEvent.Session.CurrentLap = 2
 	tm.Send(RaceWeekendEventMsg{
-		data: rwEvent,
+		Data: rwEvent,
 	})
 	exitTestTeaProgram(t, tm, done)
 	// capture/check TUI view

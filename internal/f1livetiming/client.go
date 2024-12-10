@@ -17,7 +17,6 @@ import (
 
 	"github.com/bcdxn/f1cli/internal/domain"
 	"github.com/coder/websocket"
-	"github.com/coder/websocket/wsjson"
 )
 
 // NewClient creates and returns a new F1 LiveTiming Client for retrieving real-time data from
@@ -52,8 +51,9 @@ type Client struct {
 	httpBaseURL string
 	wsBaseURL   string
 	// Internal state store
-	drivers map[uint8]domain.Driver
-	event   domain.RaceWeekendEvent
+	drivers       map[string]domain.Driver
+	driversTiming map[string]domain.DriverTimingData
+	event         domain.RaceWeekendEvent
 }
 
 // Negotiate calls the F1 Live Timing Signalr API, retreiving information required to start the
@@ -97,26 +97,35 @@ func (c *Client) Negotiate() error {
 // an in-progress F1 event.
 func (c *Client) Connect() {
 	// Ensure negotiate was called before connect
+	c.logger.Debug("client.Connect()")
 	if c.connectionToken == "" {
-		c.done <- errors.New("client.Negotiate() was not called or a valid connecton token was not returned")
+		c.logger.Error("client.Negotiate() was not called or a valid connecton token was not returned")
+		c.done <- errors.New("missing connection token")
 		close(c.done)
 		return
 	}
 	// Drive the websocket URL
 	u, err := c.websocketURL()
 	if err != nil {
+		c.logger.Error("error building websocket URL")
 		c.done <- err
 		close(c.done)
 		return
 	}
+	// Add required headers
+	headers := make(http.Header)
+	headers.Add("User-Agent", "BestHTTP")
+	headers.Add("Accept-Encoding", "gzip,identity")
+	headers.Add("Cookie", c.cookie)
 	// Create the websocket connection with the F1 livetiming API server
-	conn, _, err := websocket.Dial(context.Background(), u.String(), nil)
-	conn.SetReadLimit(-1)
+	conn, _, err := websocket.Dial(context.Background(), u.String(), &websocket.DialOptions{HTTPHeader: headers})
 	if err != nil {
+		c.logger.Error("error dialing websocket", "err", err.Error())
 		c.done <- err
 		close(c.done)
 		return
 	}
+	conn.SetReadLimit(-1)
 	// Start the subscription by sending a message indicating which messages we're interested in
 	err = c.sendSubscribeMsg(conn)
 	if err != nil {
@@ -174,7 +183,7 @@ func (c *Client) DoneCh() <-chan error {
 }
 
 // DriverCh returns a readonly version of the driver channel. Read from this channel to be
-// notified of internal state changes related to driver data (both intrinsic and timing-related).
+// notified of internal state changes related to intrinsic driver data.
 func (c *Client) DriverCh() <-chan struct{} {
 	return c.driverCh
 }
@@ -189,8 +198,8 @@ func (c *Client) EventCh() <-chan struct{} {
 ------------------------------------------------------------------------------------------------- */
 
 // DriversState gets the data within the drivers state store; this holds a snapshot of the intrinsic
-// data as well as timing/delta data for each driver.
-func (c *Client) DriversState() map[uint8]domain.Driver {
+// data as well as timing/delta for each driver.
+func (c *Client) DriversState() map[string]domain.Driver {
 	return c.drivers
 }
 
@@ -258,15 +267,17 @@ type f1ChangeMessage struct {
 // pointing at the F1 Live Timing API.
 func defaultClient() *Client {
 	return &Client{
-		interrupt:   make(chan struct{}),
-		done:        make(chan error),
-		driverCh:    make(chan struct{}),
-		eventCh:     make(chan struct{}),
-		logger:      slog.Default(),
-		listening:   false,
-		httpBaseURL: "https://livetiming.formula1.com",
-		wsBaseURL:   "wss://livetiming.formula1.com",
-		drivers:     make(map[uint8]domain.Driver),
+		interrupt: make(chan struct{}),
+		done:      make(chan error),
+		driverCh:  make(chan struct{}),
+		eventCh:   make(chan struct{}),
+		logger:    slog.Default(),
+		listening: false,
+		// httpBaseURL: "https://livetiming.formula1.com",
+		// wsBaseURL:   "wss://livetiming.formula1.com",
+		httpBaseURL: "http://localhost:3000",
+		wsBaseURL:   "ws://localhost:3000",
+		drivers:     make(map[string]domain.Driver),
 	}
 }
 
@@ -342,32 +353,32 @@ func (c Client) websocketURL() (*url.URL, error) {
 // sendSubscribeMsg sends a message that tells the server which types of data messages we would like
 // to receive as required by the F1 Live Timing API.
 func (Client) sendSubscribeMsg(conn *websocket.Conn) error {
-	return wsjson.Write(context.Background(), conn, `
-        {
-            "H": "Streaming",
-            "M": "Subscribe",
-            "A": [[
-                "Heartbeat",
-                "TimingStats",
-                "TimingAppData",
-                "TrackStatus",
-                "DriverList",
-                "RaceControlMessages",
-                "SessionInfo",
-                "SessionData",
-                "LapCount",
-                "TimingData"
-            ]],
-            "I": 1
-        }
-    `)
+	return conn.Write(context.Background(), websocket.MessageText, []byte(`
+			{
+					"H": "Streaming",
+					"M": "Subscribe",
+					"A": [[
+							"Heartbeat",
+							"TimingStats",
+							"TimingAppData",
+							"TrackStatus",
+							"DriverList",
+							"RaceControlMessages",
+							"SessionInfo",
+							"SessionData",
+							"LapCount",
+							"TimingData"
+					]],
+					"I": 1
+			}
+	`))
 }
 
 // atoui8 converts a string to an unit8.
 func (c Client) atoui8(numberStr string) uint8 {
 	numberInt, err := strconv.Atoi(numberStr)
 	if err != nil {
-		c.logger.Warn("invalid driver number as driver info key", "driverNumber", numberInt)
+		c.logger.Warn("invalid number as driver info key", "driverNumber", numberInt)
 	}
 	return uint8(numberInt)
 }
@@ -398,6 +409,8 @@ func (c *Client) processMessage(msg []byte) {
 	err = json.Unmarshal([]byte(referenceMsg), &referenceData)
 	if err == nil && referenceData.MessageInterval != "" {
 		c.logger.Debug("received reference data message")
+		c.logger.Debug("REFERENCE MESSAGE")
+		c.logger.Debug(string(msg))
 		c.processReferenceMessage(referenceData)
 		return
 	}
@@ -405,11 +418,18 @@ func (c *Client) processMessage(msg []byte) {
 	c.logger.Debug("unhandled message", "msg", msg)
 }
 
+// processReferenceMessage deconstructs the reference messagef rom the F1 LiveTiming API that
+// represents an intitial state, and passes the various components to individual functions that
+// handle updating the client's internal state.
 func (c *Client) processReferenceMessage(referenceMessage f1ReferenceMessage) {
 	c.updateSessionInfo(referenceMessage.Reference.SessionInfo)
 	c.updateDriverIntrinsicData(referenceMessage.Reference.DriverList)
+	c.updateLapCountData(referenceMessage.Reference.LapCount)
 	c.updateDriverTimingData(
 		changeTimingDataFromReference(referenceMessage.Reference.TimingData),
+	)
+	c.updateTimingAppData(
+		changeTimingAppDataFromReference(referenceMessage.Reference.TimingAppData),
 	)
 }
 
@@ -438,12 +458,24 @@ func (c *Client) processChangeMessage(changeMessage f1ChangeMessage) {
 			case "LapCount":
 				c.handleLapCountMsg(msg)
 			case "TimingAppData":
-				c.updateTimingAppData(msg)
+				c.handleTimingAppDataMsg(msg)
 			default:
 				c.logger.Warn("unknown change message", "type", msgType, "msg", msg)
 			}
 		}
 	}
+}
+
+// notifyEventChannel notifies consumers that the client race weekend event state has changed.
+func (c *Client) notifyEventChannel() {
+	c.logger.Debug("event state change", "event", c.event)
+	c.eventCh <- struct{}{}
+}
+
+// notifyDriverChannel notifies consumers that the client drivers state has changed.
+func (c *Client) notifyDriverChannel() {
+	c.logger.Debug("drivers state change", "drivers", c.drivers)
+	c.driverCh <- struct{}{}
 }
 
 /* Update Internal State
@@ -471,42 +503,24 @@ func (c *Client) handleDriverListMsg(msg []byte) {
 // driver channel to let consumers know that the data has been updated.
 func (c *Client) updateDriverIntrinsicData(driverDataMsg map[string]driverData) {
 	// update data for each driver to the drivers map
-	for driverNumber, driverData := range driverDataMsg {
-		number := c.atoui8(driverNumber)
-		if number == 0 {
-			continue
-		}
+	for number, driverData := range driverDataMsg {
 		// retrieve existing driver data from the map if it exists or create a new driver
 		driver, ok := c.drivers[number]
 		if !ok {
-			driver = domain.Driver{
-				Number: number,
-			}
+			driver = domain.NewDriver(number)
 		}
 		// Overwrite fields
-		if driverData.ShortName != nil {
-			driver.ShortName = *driverData.ShortName
-		}
-		if driverData.FirstName != nil && driverData.LastName != nil {
-			if driverData.NameFormat != nil && *driverData.NameFormat == "LastNameIsPrimary" {
-				driver.Name = *driverData.LastName + " " + *driverData.FirstName
-			} else {
-				driver.Name = *driverData.FirstName + " " + *driverData.LastName
-			}
-		}
-		if driverData.TeamName != nil && *driverData.TeamName != "" {
-			driver.TeamName = *driverData.TeamName
-		}
-		if driverData.TeamColour != nil && *driverData.TeamColour != "" {
-			driver.TeamColor = *driverData.TeamColour
-		}
+		driver.SetShortName(driverData.ShortName)
+		driver.SetName(driverData.FirstName, driverData.LastName, driverData.NameFormat)
+		driver.SetTeamName(driverData.TeamName)
+		driver.SetTeamColor(driverData.TeamColour)
 		// write the driver data back to the client state store
 		c.drivers[number] = driver
 	}
-	c.driverCh <- struct{}{}
+	c.notifyDriverChannel()
 }
 
-// handleDriverTimingData converts the TmingData websocket message from the F1 LiveTiming API to
+// handleDriverTimingData converts the TimingData websocket message from the F1 LiveTiming API to
 // strongly typed struct and updates the client's stre via the `updateDriverTimingData`.
 func (c *Client) handleDriverTimingData(msg []byte) {
 	var timingDataMsg changeTimingData
@@ -525,75 +539,58 @@ func (c *Client) updateDriverTimingData(timingDataMsg changeTimingData) {
 	// only send a notification event fon the session channel if the session was updated
 	sessionUpdated := false
 	// add data for each driver to the drivers map
-	for driverNumber, timingData := range timingDataMsg.Lines {
-		number := c.atoui8(driverNumber)
-		if number == 0 {
-			continue
-		}
+	for number, timingData := range timingDataMsg.Lines {
 		// retrieve existing driver data from the map if it exists or create a new driver
 		driver, ok := c.drivers[number]
 		if !ok {
-			driver = domain.Driver{
-				Number: number,
-			}
+			driver = domain.NewDriver(number)
 		}
 		// Overwrite fields
-		if timingData.Position != nil {
-			driver.Position = *timingData.Position
+		driver.SetPosition(timingData.Position)
+		driver.SetLeaderGap(timingData.GapToLeader)
+		driver.SetIntervalGap(timingData.IntervalToPositionAhead.Value)
+		driver.SetLastLap(timingData.LastLapTime.Value, timingData.LastLapTime.PersonalFastest)
+		if timingData.LastLapTime.OverallFastest != nil && *timingData.LastLapTime.OverallFastest {
+			c.event.Session.FastestLapOwner = number
+			sessionUpdated = true
 		}
-		if timingData.IntervalToPositionAhead.Value != nil {
-			driver.IntervalGap = *timingData.IntervalToPositionAhead.Value
+		driver.SetBestLap(timingData.BestLapTime.Value)
+		driver.SetKnockedOut(timingData.KnockedOut)
+		driver.SetCutoff(timingData.Cutoff)
+		// In Qualifying Sessions the interval is stored separately for each qualifying part; we're only
+		// interested the most recent qualifying part, so we iterate through (the list is in order) and
+		// overwrite the gaps for each available qualifying part
+		parts := make([]string, 0, 3)
+		for part := range timingData.Stats {
+			parts = append(parts, part)
 		}
-		if timingData.GapToLeader != nil {
-			driver.LeaderGap = *timingData.GapToLeader
+		sort.Strings(parts)
+		for _, part := range parts {
+			driver.SetLeaderGap(timingData.Stats[part].TimeDiffToFastest)
+			driver.SetIntervalGap(timingData.Stats[part].TimeDiffToPositionAhead)
 		}
 
-		if timingData.LastLapTime.Value != nil {
-			driver.LastLap.Time = *timingData.LastLapTime.Value
-			if timingData.LastLapTime.PersonalFastest != nil {
-				driver.LastLap.IsPersonalBest = *timingData.LastLapTime.PersonalFastest
-				driver.BestLapTime = *timingData.LastLapTime.Value
-			}
-			if timingData.LastLapTime.OverallFastest != nil {
-				c.event.Session.FastestLapOwner = number
+		// Sort sectors
+		sectorNums := make([]string, 0, 3)
+		for sectorNum := range timingData.Sectors {
+			sectorNums = append(sectorNums, sectorNum)
+		}
+		sort.Strings(sectorNums)
+		for _, sectorNum := range sectorNums {
+			i, _ := strconv.Atoi(sectorNum)
+			sector := timingData.Sectors[sectorNum]
+			driver.SetSector(i, sector.Value, sector.PersonalBest, sector.OverallBest)
+			if sector.OverallBest != nil && *sector.OverallBest {
+				c.event.Session.FastestSectorOwner[i] = number
 				sessionUpdated = true
 			}
 		}
-		// Write sectors
-		for sectorNum, sector := range timingData.Sectors {
-			i := c.atoui8(sectorNum)
-			// First clear sectors after the current sector
-			if i < 1 {
-				// Clear sector 2 since the driver just set the time in the first sector
-				c.drivers[number].Sectors[1] = domain.Sector{IsActive: false}
-			}
-			if i < 2 {
-				// Clear sector 3 since the driver just set the time in the first or second sector
-				c.drivers[number].Sectors[2] = domain.Sector{IsActive: false}
-			}
-			// Create and overwrite the current sector
-			newSector := domain.Sector{
-				Time:     *sector.Value,
-				IsActive: true,
-			}
-			if sector.OverallBest != nil {
-				newSector.IsOverallBest = *sector.OverallBest
-				if newSector.IsOverallBest {
-					c.event.Session.FastestSectorOwner[i] = number
-				}
-			}
-			if sector.PersonalBest != nil {
-				newSector.IsPersonalBest = *sector.PersonalBest
-			}
-			c.drivers[number].Sectors[i] = newSector
-		}
-		// write the driver data back to the client state store
 		c.drivers[number] = driver
 	}
-	// Notify consumers that driver data has changed
-	c.driverCh <- struct{}{}
+
+	c.notifyDriverChannel()
 	if sessionUpdated {
-		c.eventCh <- struct{}{}
+		c.notifyEventChannel()
 	}
 }
 
@@ -638,9 +635,6 @@ func (c *Client) updateSessionInfo(session sessionInfo) {
 	if session.Name != nil {
 		c.event.Session.Name = *session.Name
 	}
-	if session.Number != nil {
-		c.event.Session.Number = *session.Number
-	}
 	if session.GMTOffset != nil {
 		c.event.Session.GMTOffset = strings.Join(strings.Split(*session.GMTOffset, ":")[:2], "")
 	}
@@ -650,8 +644,8 @@ func (c *Client) updateSessionInfo(session sessionInfo) {
 	if session.EndDate != nil && c.event.Session.GMTOffset != "" {
 		c.event.Session.EndDate, _ = time.Parse(f1APIDateLayout, *session.EndDate+c.event.Session.GMTOffset)
 	}
-	// Notifiy consumers that the event state has changed
-	c.eventCh <- struct{}{}
+	c.event.Session.FastestSectorOwner = make([]string, 3)
+	c.notifyEventChannel()
 }
 
 // handleLapCountMsg converts a websocket message from the F1 Live Timing API to a strongly typed
@@ -663,6 +657,8 @@ func (c *Client) handleLapCountMsg(msg []byte) {
 		c.logger.Warn("lap count msg in unknown format", "msg", string(msg))
 		return
 	}
+
+	c.updateLapCountData(lc)
 }
 
 // updateLapCountData converts LapCount msg from the F1 Live Timing API to the RaceWeekendEvent`
@@ -675,53 +671,61 @@ func (c *Client) updateLapCountData(lc lapCount) {
 	if lc.TotalLaps != nil {
 		c.event.Session.TotalLaps = *lc.TotalLaps
 	}
-	// Notifiy consumers that the event state has changed
-	c.eventCh <- struct{}{}
+
+	c.notifyEventChannel()
 }
 
-// updateTimingAppData converts TimingAppData msg from the F1 Live Timing API to the
-// `Driver` domain type stored in the client's internal state store and writes a notification on the
-// driver channel to let consumers know the data has changed.
-func (c *Client) updateTimingAppData(msg []byte) {
+// handleTimingAppDataMsg converts the websocket message from the F1 Live Timing API to a strongly
+// typed struct and then updates the client's internal store via the `updateTimingAppData` helper
+// function.
+func (c *Client) handleTimingAppDataMsg(msg []byte) {
 	var tad changeTimingAppData
 	err := json.Unmarshal(msg, &tad)
 	if err != nil {
 		c.logger.Warn("timing app data msg in unknown format", "msg", string(msg))
 		return
 	}
+}
 
-	for driverNumber, timingAppData := range tad.Lines {
-		number := c.atoui8(driverNumber)
-		if number == 0 {
-			continue
-		}
-		// if multiple stints are given (e.g. in the reference message) we'll iterate through them,
-		// taking the stint with the largest key (which are numbers indicated the order)
-		stints := make([]string, 0, 3)
-		for stint := range timingAppData.Stints {
-			stints = append(stints, stint)
-		}
-		// sort the stints in descending order by key so we can take the largest key at index 0
-		sort.Slice(stints, func(i, j int) bool {
-			return stints[i] > stints[j]
-		})
-		currentStint := stints[0]
+// updateTimingAppData converts TimingAppData msg from the F1 Live Timing API to the
+// `Driver` domain type stored in the client's internal state store and writes a notification on the
+// driver channel to let consumers know the data has changed.
+func (c *Client) updateTimingAppData(tad changeTimingAppData) {
+	// for driverNumber, timingAppData := range tad.Lines {
+	// 	number := c.atoui8(driverNumber)
+	// 	if number == 0 {
+	// 		continue
+	// 	}
+	// 	// if multiple stints are given (e.g. in the reference message) we'll iterate through them,
+	// 	// taking the stint with the largest key (which are numbers indicated the order)
+	// 	stints := make([]string, 0, 3)
+	// 	for stint := range timingAppData.Stints {
+	// 		stints = append(stints, stint)
+	// 	}
+	// 	// sort the stints in descending order by key so we can take the largest key at index 0
+	// 	sort.Slice(stints, func(i, j int) bool {
+	// 		return stints[i] > stints[j]
+	// 	})
+	// 	if len(stints) == 0 {
+	// 		continue
+	// 	}
+	// 	currentStint := stints[0]
 
-		driver, ok := c.drivers[number]
-		if !ok {
-			driver = domain.Driver{Number: number}
-		}
-		if timingAppData.Stints[currentStint].Compound != nil {
-			driver.TireCompound = tireCompound(*timingAppData.Stints[currentStint].Compound)
-		}
-		if timingAppData.Stints[currentStint].TotalLaps != nil {
-			driver.TireLapCount = *timingAppData.Stints[currentStint].TotalLaps
-		}
-		// overwrite the driver state with the new stint information
-		c.drivers[number] = driver
-	}
-	// notify consumers that the drivers state has changed
-	c.driverCh <- struct{}{}
+	// 	driver, ok := c.drivers[number]
+	// 	if !ok {
+	// 		driver = domain.Driver{Number: number}
+	// 	}
+	// 	if timingAppData.Stints[currentStint].Compound != nil {
+	// 		driver.TireCompound = tireCompound(*timingAppData.Stints[currentStint].Compound)
+	// 	}
+	// 	if timingAppData.Stints[currentStint].TotalLaps != nil {
+	// 		driver.TireLapCount = *timingAppData.Stints[currentStint].TotalLaps
+	// 	}
+	// 	// overwrite the driver state with the new stint information
+	// 	c.drivers[number] = driver
+	// }
+
+	c.notifyDriverChannel()
 }
 
 func tireCompound(compound string) domain.TireCompound {

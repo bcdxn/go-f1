@@ -1,6 +1,9 @@
 package f1livetiming
 
-import "time"
+import (
+	"strconv"
+	"time"
+)
 
 // f1ReferenceMessance represents the initial state of a session for all of the requested data from
 // the F1 Live Timing API. This includes intrinsic data about the session as well as driver, timing
@@ -31,7 +34,7 @@ type heartbeat struct {
 type referenceTimingAppData struct {
 	Lines map[string]struct {
 		RacingNumber string  `json:"RacingNumber"`
-		Line         uint8   `json:"Line"`
+		Line         int     `json:"Line"`
 		GridPos      string  `json:"GridPos"`
 		Stints       []stint `json:"Stints"`
 	} `json:"Lines"`
@@ -40,23 +43,25 @@ type referenceTimingAppData struct {
 // changeTimingAppData contains per-driver stint information similar to `referenceTimingAppData` but
 // the data structure containing the stint information is a map instead of a slice.
 type changeTimingAppData struct {
-	Lines map[string]struct {
-		RacingNumber string           `json:"RacingNumber"`
-		Line         uint8            `json:"Line"`
-		GridPos      string           `json:"GridPos"`
-		Stints       map[string]stint `json:"Stints"`
-	} `json:"Lines"`
+	Lines map[string]changeDrivingTimingAppData `json:"Lines"`
+}
+
+type changeDrivingTimingAppData struct {
+	RacingNumber string           `json:"RacingNumber"`
+	Line         int              `json:"Line"`
+	GridPos      string           `json:"GridPos"`
+	Stints       map[string]stint `json:"Stints"`
 }
 
 type stint struct {
-	LapFlags        *uint8  `json:"LapFlags"`
+	LapFlags        *int    `json:"LapFlags"`
 	Compound        *string `json:"Compound"`
 	New             *string `json:"New"`
 	TyresNotChanged *string `json:"TyresNotChanged"`
-	TotalLaps       *uint8  `json:"TotalLaps"`
-	StartLaps       *uint8  `json:"StartLaps"`
+	TotalLaps       *int    `json:"TotalLaps"`
+	StartLaps       *int    `json:"StartLaps"`
 	LapTime         *string `json:"LapTime"`
-	LapNumber       *uint8  `json:"LapNumber"`
+	LapNumber       *int    `json:"LapNumber"`
 }
 
 type trackStatus struct {
@@ -70,7 +75,7 @@ type driverData struct {
 	BroadcastName *string `json:"BroadcastName"`
 	FullName      *string `json:"FullName"`
 	ShortName     *string `json:"Tla"`
-	Line          *uint8  `json:"Line"`
+	Line          *int    `json:"Line"`
 	TeamName      *string `json:"TeamName"`
 	TeamColour    *string `json:"TeamColour"`
 	FirstName     *string `json:"FirstName"`
@@ -95,14 +100,14 @@ type referenceRaceCtrlMsgs struct {
 // about investigations, penalties, track limits violations, flag information and more.
 type raceCtrlMsg struct {
 	UTC      string `json:"Utc"`
-	Lap      uint8  `json:"Lap"`
+	Lap      int    `json:"Lap"`
 	Category string `json:"Category"`
 	Message  string `json:"Message"`
 	Flag     string `json:"Flag"`
 	Mode     string `json:"Mode"`
 	Scope    string `json:"Scope"`
 	Status   string `json:"Status"`
-	Sector   uint8  `json:"Sector"`
+	Sector   int    `json:"Sector"`
 }
 
 // sessionInfo contains intrinsic data about the weekend event and current session. Typically this
@@ -114,7 +119,7 @@ type sessionInfo struct {
 		Name         *string `json:"Name"`
 		OfficialName *string `json:"OfficialName"`
 		Location     *string `json:"Location"`
-		Number       *uint8  `json:"Number"`
+		Number       *int    `json:"Number"`
 		Country      struct {
 			Key  *int    `json:"Key"`
 			Code *string `json:"Code"`
@@ -130,7 +135,7 @@ type sessionInfo struct {
 	} `json:"ArchiveStatus"`
 	Key       *int    `json:"Key"`
 	Type      *string `json:"Type"`
-	Number    *uint8  `json:"Number"`
+	Number    *int    `json:"Number"`
 	Name      *string `json:"Name"`
 	StartDate *string `json:"StartDate"`
 	EndDate   *string `json:"EndDate"`
@@ -158,7 +163,7 @@ type changeSessionData struct {
 // flag on Lap 1 of the race. Note: this will only apply for races and sprint races.
 type sessionDataSeries struct {
 	UTC time.Time `json:"Utc"`
-	Lap uint8     `json:"Lap"`
+	Lap int       `json:"Lap"`
 }
 
 // sessionDataStatuseries contains a session and/or track status series change. These statuses
@@ -188,9 +193,7 @@ type changeTimingData struct {
 // driver. Both `referenceDriverTimingData` and `changeDriverTimingData` 'inherit' the properties
 // from `driverTimingData`
 type driverTimingData struct {
-	TimeDiffToFastest       *string              `json:"TimeDiffToFastest"`
-	TimeDiffToPositionAhead *string              `json:"TimeDiffToPositionAhead"`
-	Position                *int                 `json:"Line"`         // current position
+	Position                *string              `json:"Position"`     // current position on timing board
 	ShowPosition            *bool                `json:"ShowPosition"` // Will be false when a driver is out of the session (race), or out of the session (qualifying)
 	RacingNumber            string               `json:"RacingNumber"` // the unique driver number
 	Retired                 *bool                `json:"Retired"`      // car and driver have retired from the race
@@ -203,7 +206,9 @@ type driverTimingData struct {
 	Speeds                  driverTimingSpeeds   `json:"Speeds"`
 	BestLapTime             driverTimingBestLap  `json:"BestLapTime"`
 	LastLapTime             driverTimingLastLap  `json:"LastLapTime"`
-	NumberOfLaps            *uint8               `json:"NumberOfLaps"`
+	NumberOfLaps            *int                 `json:"NumberOfLaps"`
+	KnockedOut              *bool                `json:"KnockedOut"`
+	Cutoff                  *bool                `json:"Cutoff"`
 }
 
 type driverTimingInterval struct {
@@ -219,7 +224,7 @@ type driverTimingSpeeds struct {
 
 type driverTimingBestLap struct {
 	Value *string `json:"Value"`
-	Lap   *uint8  `json:"Lap"`
+	Lap   *int    `json:"Lap"`
 }
 
 type driverTimingLastLap struct {
@@ -241,35 +246,47 @@ type driverSpeedTimingData struct {
 // referenceDriverTimingData contains driver timing data along with sector timing data in a slice.
 type referenceDriverTimingData struct {
 	driverTimingData
-	Sectors []sectorTiming `json:"Sectors"`
+	Sectors []sectorTiming      `json:"Sectors"`
+	Stats   []driverTimingStats `json:"Stats"`
 }
 
 // changeDriverTimingData contains driver timing data along with sector timing data in a map so
 // that changes can be easily merged into a data store.
 type changeDriverTimingData struct {
 	driverTimingData
-	Sectors map[string]sectorTiming `json:"Sectors"`
+	Sectors map[string]sectorTiming      `json:"Sectors"`
+	Stats   map[string]driverTimingStats `json:"Stats"` // Qualifying and Practice encapsulate deltas in 'Stats'
 }
 
+type driverTimingStats struct {
+	TimeDiffToFastest       *string `json:"TimeDiffToFastest"`
+	TimeDiffToPositionAhead *string `json:"TimeDiffToPositionAhead"`
+}
+
+// Convert the timing data reference message structure to the change message structure so that we
+// only need one handler implementation in the client.
 func changeTimingDataFromReference(ref referenceTimingData) changeTimingData {
 	ctd := changeTimingData{
 		Lines: make(map[string]changeDriverTimingData),
 	}
 
 	for num, rtd := range ref.Lines {
+		statsMap := make(map[string]driverTimingStats)
+		for i, stat := range rtd.Stats {
+			sessionNum := strconv.Itoa(i)
+			statsMap[sessionNum] = stat
+		}
 		ctd.Lines[num] = changeDriverTimingData{
 			driverTimingData: driverTimingData{
-				TimeDiffToFastest:       rtd.TimeDiffToFastest,
-				TimeDiffToPositionAhead: rtd.TimeDiffToPositionAhead,
-				Position:                rtd.Position,
-				ShowPosition:            rtd.ShowPosition,
-				RacingNumber:            rtd.RacingNumber,
-				Retired:                 rtd.Retired,
-				InPit:                   rtd.InPit,
-				PitOut:                  rtd.PitOut,
-				Stopped:                 rtd.Stopped,
-				Status:                  rtd.Status,
-				GapToLeader:             rtd.GapToLeader,
+				Position:     rtd.Position,
+				ShowPosition: rtd.ShowPosition,
+				RacingNumber: rtd.RacingNumber,
+				Retired:      rtd.Retired,
+				InPit:        rtd.InPit,
+				PitOut:       rtd.PitOut,
+				Stopped:      rtd.Stopped,
+				Status:       rtd.Status,
+				GapToLeader:  rtd.GapToLeader,
 				IntervalToPositionAhead: driverTimingInterval{
 					Value:    rtd.IntervalToPositionAhead.Value,
 					Catching: rtd.IntervalToPositionAhead.Catching,
@@ -291,10 +308,35 @@ func changeTimingDataFromReference(ref referenceTimingData) changeTimingData {
 				},
 				NumberOfLaps: rtd.NumberOfLaps,
 			},
+			Stats: statsMap,
+			// TODO: Sectors
 		}
 	}
 
 	return ctd
+}
+
+// Convert the timing app data reference message structure to the change message structure so that
+// we only need one handler implementation in the client.
+func changeTimingAppDataFromReference(ref referenceTimingAppData) changeTimingAppData {
+	lines := make(map[string]changeDrivingTimingAppData)
+
+	for driverNumber, rtad := range ref.Lines {
+		// convert stint array in reference message to map structure in change message
+		stints := make(map[string]stint)
+		for i, stint := range rtad.Stints {
+			stints[strconv.Itoa(i)] = stint
+		}
+
+		lines[driverNumber] = changeDrivingTimingAppData{
+			RacingNumber: rtad.RacingNumber,
+			Line:         rtad.Line,
+			GridPos:      rtad.GridPos,
+			Stints:       stints,
+		}
+	}
+
+	return changeTimingAppData{Lines: lines}
 }
 
 // sectorTiming represents timing for 1 of 3 sectors around the crcuit for a specific driver on a
@@ -314,6 +356,6 @@ type sectorTiming struct {
 // lapCount represents the latest lap information of the session, including the `CurrentLap` of the
 // leader in races.
 type lapCount struct {
-	CurrentLap *uint8 `json:"CurrentLap"`
-	TotalLaps  *uint8 `json:"TotalLaps"`
+	CurrentLap *int `json:"CurrentLap"`
+	TotalLaps  *int `json:"TotalLaps"`
 }

@@ -19,9 +19,13 @@ var (
 	s = styles.Default()
 )
 
-func RunTUI(l *slog.Logger, done chan error) error {
+func NewTUI(l *slog.Logger, done chan error) *tea.Program {
 	m := newModel(l, done)
-	if _, err := tea.NewProgram(m, tea.WithAltScreen()).Run(); err != nil {
+	return tea.NewProgram(m, tea.WithAltScreen())
+}
+
+func RunTUI(p *tea.Program) error {
+	if _, err := p.Run(); err != nil {
 		return err
 	}
 
@@ -42,7 +46,7 @@ type Model struct {
 	// channels
 	done chan error // this channel closes with an exit code when the TUI has exited (any non zero code indicates an error)
 	// model data
-	drivers map[uint8]domain.Driver
+	drivers map[string]domain.Driver
 	event   domain.RaceWeekendEvent
 }
 
@@ -62,11 +66,11 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return handleWindowSizeMsg(m, msg)
 	case RaceWeekendEventMsg:
 		m.isLoading = false
-		m.event = msg.data
+		m.event = msg.Data
 		return m, nil
 	case DriversMsg:
 		m.isLoading = false
-		m.drivers = msg.data
+		m.drivers = msg.Data
 		return m, nil
 	default:
 		var cmd tea.Cmd
@@ -99,11 +103,11 @@ func (m Model) View() string {
 ------------------------------------------------------------------------------------------------- */
 
 type RaceWeekendEventMsg struct {
-	data domain.RaceWeekendEvent
+	Data domain.RaceWeekendEvent
 }
 
 type DriversMsg struct {
-	data map[uint8]domain.Driver
+	Data map[string]domain.Driver
 }
 
 // // DriverInfoMsg represents intrinsic data about a driver as well as updates to live-timing data
@@ -144,7 +148,7 @@ type DriversMsg struct {
 func handleKeyMsg(m Model, msg tea.KeyMsg) (Model, tea.Cmd) {
 	switch msg.String() {
 	case "q", "ctrl+c":
-		m.logger.Debug("closing done channel and exiting ")
+		m.logger.Debug("closing done channel and exiting")
 		close(m.done)
 		return m, tea.Quit
 	}
@@ -286,7 +290,7 @@ func newModel(logger *slog.Logger, done chan error) Model {
 		logger:    logger,
 		isLoading: true,
 		spinner:   sp,
-		drivers:   make(map[uint8]domain.Driver),
+		drivers:   make(map[string]domain.Driver),
 		done:      done,
 	}
 	// TODO: REMOVE
@@ -751,6 +755,12 @@ func viewHeader(m Model) string {
 
 // viewTable returns the table view component
 func viewTable(m Model) string {
+	// if m.event.Session.Type == domain.SessionTypeQualifying {
+	return viewQualifyingTable(m)
+	// }
+}
+
+func viewQualifyingTable(m Model) string {
 	baseStyle := lipgloss.NewStyle().Padding(0, 1, 1, 1)
 	drivers := sortDrivers(m.drivers)
 	rows := make([][]string, 0, len(drivers))
@@ -761,9 +771,8 @@ func viewTable(m Model) string {
 			driverName(d, m.event),
 			driverIntervalGap(d),
 			driverLeaderGap(d),
-			driverTire(d),
 			driverSectors(d, m.event),
-			driverLastLap(d, &m.event),
+			// driverSectors(d, m.event),
 			driverBestLap(d, &m.event),
 		})
 	}
@@ -784,7 +793,7 @@ func viewTable(m Model) string {
 
 			return style
 		}).
-		Headers("POS", "DRIVER", "INT", "LEADER", "TIRE", "SECTORS", "LAST", "BEST").
+		Headers("POS", "DRIVER", "INT", "LEADER", "SECTORS", "BEST").
 		Rows(rows...)
 
 	return lipgloss.PlaceHorizontal(
@@ -798,14 +807,22 @@ func viewTable(m Model) string {
 
 // sortDrivers returns a sorted of list of drivers, sorted by their leaderboard position in the
 // session used by the timing table.
-func sortDrivers(driverMap map[uint8]domain.Driver) []domain.Driver {
+func sortDrivers(driverMap map[string]domain.Driver) []domain.Driver {
 	drivers := make([]domain.Driver, 0, len(driverMap))
 	for _, driver := range driverMap {
 		drivers = append(drivers, driver)
 	}
 
 	sort.Slice(drivers, func(i, j int) bool {
-		return drivers[i].Position < drivers[j].Position
+		p1, err := strconv.Atoi(drivers[i].TimingData.Position)
+		if err != nil {
+			p1 = 100
+		}
+		p2, err := strconv.Atoi(drivers[j].TimingData.Position)
+		if err != nil {
+			p2 = 100
+		}
+		return p1 < p2
 	})
 
 	return drivers
@@ -814,8 +831,13 @@ func sortDrivers(driverMap map[uint8]domain.Driver) []domain.Driver {
 // driverPosition returns a sanitized version of the driver's position on the leaderboard
 func driverPosition(d domain.Driver) string {
 	v := "-"
-	if pos := strconv.Itoa(int(d.Position)); pos != "0" {
+	if pos := d.TimingData.Position; pos != "" {
 		v = pos
+	}
+	if d.TimingData.KnockedOut || d.TimingData.Retired {
+		v = lipgloss.NewStyle().Foreground(s.Color.Subtle).Render(v)
+	} else if d.TimingData.Cutoff {
+		v = lipgloss.NewStyle().Foreground(s.Color.Red).Render(v)
 	}
 	return v
 }
@@ -823,9 +845,9 @@ func driverPosition(d domain.Driver) string {
 // driverName returns the driver name formatted with the team color and fastsest lap indicator when
 // appropriate formatted for the timing table
 func driverName(d domain.Driver, e domain.RaceWeekendEvent) string {
-	c := lipgloss.Color("#" + d.TeamColor)
+	c := lipgloss.Color(d.TeamColor)
 	n := lipgloss.NewStyle().Foreground(c).Render("▍") + d.ShortName
-	if d.Number == e.Session.FastestLapOwner {
+	if e.Session.Type == domain.SessionTypeRace && d.Number == e.Session.FastestLapOwner {
 		n = n + s.Purple.Render(" ⏱")
 	}
 	return n
@@ -837,85 +859,86 @@ var (
 
 // driverIntervalGap returns the driver interval to the car ahead formatted for the timing table.
 func driverIntervalGap(d domain.Driver) string {
-	if d.IntervalGap == "" || d.OutOfSession || leaderRe.MatchString(d.IntervalGap) {
+	if d.TimingData.IntervalGap == "" || d.TimingData.Retired || d.TimingData.KnockedOut || leaderRe.MatchString(d.TimingData.IntervalGap) {
 		return "-"
 	}
-	return d.IntervalGap
+	return d.TimingData.IntervalGap
 }
 
 // driverLeaderGap returns the driver interval to the leader car formatted for the timing table.
 func driverLeaderGap(d domain.Driver) string {
-	if d.LeaderGap == "" || d.OutOfSession || leaderRe.MatchString(d.LeaderGap) {
+	if d.TimingData.LeaderGap == "" || d.TimingData.Retired || d.TimingData.KnockedOut || leaderRe.MatchString(d.TimingData.LeaderGap) {
 		return "-"
 	}
-	return d.LeaderGap
+	return d.TimingData.LeaderGap
 }
 
 // driverLeaderGap returns the driver interval to the leader car formatted for the timing table.
-func driverTire(d domain.Driver) string {
-	if d.TireCompound == "" || d.OutOfSession {
-		return "-"
-	}
-	t := d.TireCompound[:1]
-	tireStyle := lipgloss.NewStyle()
-	switch d.TireCompound {
-	case domain.TireCompoundSoft:
-		tireStyle = tireStyle.Foreground(s.Color.SoftTire)
-	case domain.TireCompoundMedium:
-		tireStyle = tireStyle.Foreground(s.Color.MediumTire)
-	case domain.TireCompoundIntermediate:
-		tireStyle = tireStyle.Foreground(s.Color.IntermediateTire)
-	case domain.TireCompoundFullWet:
-		tireStyle = tireStyle.Foreground(s.Color.WetTire)
-	case domain.TireCompoundUnknown:
-		t = "X"
-	}
+// func driverTire(d domain.Driver) string {
+// 	if d.TireCompound == "" || d.OutOfSession {
+// 		return "-"
+// 	}
+// 	t := d.TireCompound[:1]
+// 	tireStyle := lipgloss.NewStyle()
+// 	switch d.TireCompound {
+// 	case domain.TireCompoundSoft:
+// 		tireStyle = tireStyle.Foreground(s.Color.SoftTire)
+// 	case domain.TireCompoundMedium:
+// 		tireStyle = tireStyle.Foreground(s.Color.MediumTire)
+// 	case domain.TireCompoundIntermediate:
+// 		tireStyle = tireStyle.Foreground(s.Color.IntermediateTire)
+// 	case domain.TireCompoundFullWet:
+// 		tireStyle = tireStyle.Foreground(s.Color.WetTire)
+// 	case domain.TireCompoundUnknown:
+// 		t = "X"
+// 	}
 
-	return fmt.Sprintf("%s %d Laps", tireStyle.Render(string(t)), d.TireLapCount)
-}
+// 	return fmt.Sprintf("%s %d Laps", tireStyle.Render(string(t)), d.TireLapCount)
+// }
 
-func driverLastLap(d domain.Driver, e *domain.RaceWeekendEvent) string {
-	v := "-"
+// func driverLastLap(d domain.Driver, e domain.RaceWeekendEvent) string {
+// 	v := "-"
 
-	if d.LastLap.Time != "" {
-		v = d.LastLap.Time
+// 	if d.LastLap.Time != "" {
+// 		v = d.LastLap.Time
 
-		if e.Session.FastestLapTime == "" || d.LastLap.Time < e.Session.FastestLapTime {
-			v = lipgloss.NewStyle().Foreground(s.Color.Purple).Render(v)
-			e.Session.FastestLapTime = d.LastLap.Time
-		} else if d.LastLap.IsPersonalBest {
-			v = lipgloss.NewStyle().Foreground(s.Color.Green).Render(v)
-		} else {
-			v = lipgloss.NewStyle().Foreground(s.Color.Yellow).Render(v)
-		}
-	}
+// 		if d.LastLap.Time <= e.Session.FastestLapTime && e.Session.FastestLapOwner == d.Number {
+// 			v = lipgloss.NewStyle().Foreground(s.Color.Purple).Render(v)
+// 		} else if d.LastLap.IsPersonalBest {
+// 			v = lipgloss.NewStyle().Foreground(s.Color.Green).Render(v)
+// 		} else {
+// 			v = lipgloss.NewStyle().Foreground(s.Color.Yellow).Render(v)
+// 		}
+// 	}
 
-	return v
-}
+// 	return v
+// }
 
 func driverBestLap(d domain.Driver, e *domain.RaceWeekendEvent) string {
-	v := "-"
+	if d.TimingData.BestLapTime == "" {
+		return "-"
+	}
 
-	if d.BestLapTime != "" {
-		v = d.BestLapTime
+	v := d.TimingData.BestLapTime
 
-		if d.BestLapTime <= e.Session.FastestLapTime {
-			v = lipgloss.NewStyle().Foreground(lipgloss.Color(s.Color.Purple)).Render(v)
-			e.Session.FastestLapTime = d.BestLapTime
-		}
+	if d.TimingData.KnockedOut {
+		v = lipgloss.NewStyle().Foreground(s.Color.Subtle).Render(v)
+	} else if d.TimingData.BestLapTime <= e.Session.FastestLapTime {
+		v = lipgloss.NewStyle().Foreground(lipgloss.Color(s.Color.Purple)).Render(v)
+		e.Session.FastestLapTime = d.TimingData.BestLapTime
 	}
 
 	return v
 }
 
 func driverSectors(d domain.Driver, e domain.RaceWeekendEvent) string {
-	if d.OutOfSession || len(d.Sectors) < 1 {
+	if d.TimingData.KnockedOut || d.TimingData.Retired || len(d.TimingData.Sectors) < 1 {
 		return "-"
 	}
 
 	sectors := make([]string, 0, 3)
-
-	for i, sector := range d.Sectors {
+	// for i, sector := range d.Sectors {
+	for i, sector := range d.TimingData.Sectors {
 		sectorStyle := lipgloss.NewStyle()
 		if !sector.IsActive {
 			sectorStyle = sectorStyle.Foreground(s.Color.Subtle)
